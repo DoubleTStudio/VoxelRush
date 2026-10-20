@@ -45,7 +45,7 @@ tools/build.sh client-linux # build/client-linux (headless test client)
 tools/build.sh client-mac   # build/client-mac (headless test client, local runs)
 tools/smoke-server.sh       # run the Linux server build in an amd64 Ubuntu container (x86-64 hosts)
 SMOKE_NATIVE=1 tools/smoke-server.sh build/server-mac   # same checks against the macOS build
-tools/smoke-join.sh docker  # server image + 2 Linux clients join; server-full rejection (x86-64 hosts)
+tools/smoke-join.sh docker  # server image (UDP published) + 2 Linux clients on the host; server-full rejection (x86-64 Linux)
 tools/smoke-join.sh native  # same with the macOS server + client builds
 ```
 Unity must not already have the project open when running batch-mode commands.
