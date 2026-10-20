@@ -1,5 +1,22 @@
 namespace VoxelRush.Gameplay.Vehicles
 {
+    /// <summary>Serializable boost state for snapshots and replay.</summary>
+    public readonly struct BoostState
+    {
+        public BoostState(float energy, float cooldownRemaining, bool isBoosting)
+        {
+            Energy = energy;
+            CooldownRemaining = cooldownRemaining;
+            IsBoosting = isBoosting;
+        }
+
+        public float Energy { get; }
+
+        public float CooldownRemaining { get; }
+
+        public bool IsBoosting { get; }
+    }
+
     /// <summary>
     /// Boost energy: drains while boosting, and after running dry (or releasing) waits a cooldown before regenerating.
     /// Deterministic given the same inputs and step sizes, so the server and a predicting client agree.
@@ -25,6 +42,15 @@ namespace VoxelRush.Gameplay.Vehicles
         public float Normalized => _capacity > 0 ? Energy / _capacity : 0f;
 
         public bool IsBoosting { get; private set; }
+
+        public BoostState Capture() => new BoostState(Energy, _cooldownRemaining, IsBoosting);
+
+        public void Restore(BoostState state)
+        {
+            Energy = state.Energy < 0 ? 0 : state.Energy > _capacity ? _capacity : state.Energy;
+            _cooldownRemaining = state.CooldownRemaining < 0 ? 0 : state.CooldownRemaining;
+            IsBoosting = state.IsBoosting && Energy > 0;
+        }
 
         /// <summary>Advances one step; returns whether boost applies during this step.</summary>
         public bool Step(bool wantsBoost, float deltaTime)

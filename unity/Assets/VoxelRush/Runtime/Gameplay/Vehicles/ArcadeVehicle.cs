@@ -18,6 +18,9 @@ namespace VoxelRush.Gameplay.Vehicles
 
         [SerializeField] private VehicleTuning _tuning = new VehicleTuning();
 
+        // Off when a network tick loop calls Simulate itself (server authority, client prediction/replay).
+        [SerializeField] private bool _autoSimulate = true;
+
         // Order: front-left, front-right, rear-left, rear-right.
         [SerializeField] private Transform[] _wheels = new Transform[4];
 
@@ -44,7 +47,39 @@ namespace VoxelRush.Gameplay.Vehicles
 
         public int Resets { get; private set; }
 
+        public bool AutoSimulate
+        {
+            get => _autoSimulate;
+            set => _autoSimulate = value;
+        }
+
+        public Rigidbody Body => _body;
+
+        public DrivingInput Input => _input;
+
         public void SetInput(DrivingInput input) => _input = input;
+
+        public VehicleState CaptureState() =>
+            new VehicleState(_body.position, _body.rotation, _body.linearVelocity, _body.angularVelocity, _boost.Capture());
+
+        /// <summary>Restores a captured/authoritative state; suspension history is re-measured so replay starts calm.</summary>
+        public bool RestoreState(VehicleState state)
+        {
+            if (!state.IsFinite)
+            {
+                return false;
+            }
+
+            _body.position = state.Position;
+            _body.rotation = state.Rotation;
+            transform.SetPositionAndRotation(state.Position, state.Rotation);
+            _body.linearVelocity = state.LinearVelocity;
+            _body.angularVelocity = state.AngularVelocity;
+            _boost.Restore(state.Boost);
+            Physics.SyncTransforms();
+            RefreshSuspensionHistory();
+            return true;
+        }
 
         /// <summary>Places the car upright at a pose with zero velocity (spawn, flip recovery, server correction).</summary>
         public void ResetTo(Vector3 position, Quaternion rotation)
@@ -56,7 +91,8 @@ namespace VoxelRush.Gameplay.Vehicles
             transform.SetPositionAndRotation(position, upright);
             _body.linearVelocity = Vector3.zero;
             _body.angularVelocity = Vector3.zero;
-            System.Array.Clear(_previousCompression, 0, _previousCompression.Length);
+            Physics.SyncTransforms();
+            RefreshSuspensionHistory();
         }
 
         private void Awake()
@@ -89,7 +125,20 @@ namespace VoxelRush.Gameplay.Vehicles
 
         private void FixedUpdate()
         {
-            float dt = Time.fixedDeltaTime;
+            if (_autoSimulate)
+            {
+                Simulate(Time.fixedDeltaTime);
+            }
+        }
+
+        /// <summary>Applies one step of vehicle forces; the caller then advances physics by <paramref name="dt"/>.</summary>
+        public void Simulate(float dt)
+        {
+            if (!enabled || !(dt > 0))
+            {
+                return;
+            }
+
             Transform t = transform;
             Vector3 up = t.up;
             Vector3 forward = t.forward;
@@ -154,6 +203,16 @@ namespace VoxelRush.Gameplay.Vehicles
             {
                 Resets++;
                 ResetTo(_body.position + Vector3.up * 1.5f, t.rotation);
+            }
+        }
+
+        // Sets each wheel's previous compression to its current one, so the damper sees zero velocity next step.
+        private void RefreshSuspensionHistory()
+        {
+            float rayLength = _tuning.SuspensionRestLength + _tuning.WheelRadius;
+            for (int i = 0; i < 4; i++)
+            {
+                _previousCompression[i] = TryGround(_wheels[i].position, -transform.up, rayLength, out RaycastHit hit) ? rayLength - hit.distance : 0f;
             }
         }
 
