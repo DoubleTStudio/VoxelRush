@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Compiles engine-free Unity sources and their Domain tests so they run on plain .NET (Linux CI). -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <!-- C# 9 and NUnit 3.x match Unity 6 so tests that pass here also compile in the editor. -->
+    <LangVersion>9.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <UnityAssets>$(MSBuildThisFileDirectory)../../unity/Assets/VoxelRush/</UnityAssets>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="$(UnityAssets)Runtime/Core/**/*.cs" LinkBase="Core" />
+    <Compile Include="$(UnityAssets)Tests/Domain/**/*.cs" LinkBase="Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <PackageReference Include="NUnit" Version="3.14.0" />
+    <PackageReference Include="NUnit3TestAdapter" Version="4.6.0" />
+  </ItemGroup>
+
+</Project>

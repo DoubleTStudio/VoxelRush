@@ -1,0 +1,14 @@
+{
+    "name": "VoxelRush.Destruction",
+    "rootNamespace": "VoxelRush.Destruction",
+    "references": ["VoxelRush.Core", "VoxelRush.World"],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": true
+}
