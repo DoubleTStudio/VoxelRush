@@ -22,6 +22,7 @@ namespace VoxelRush.World.Editing
         private readonly Dictionary<string, TokenBucket> _rates = new Dictionary<string, TokenBucket>();
         private readonly EditValidator _validator;
         private readonly IMutationSink? _sink;
+        private readonly Func<string, WorldRole> _roleOf;
         private readonly int _maxEditsPerSecond;
         private readonly int _maxQueuedPerTick;
         private readonly int _operationMemory;
@@ -29,10 +30,12 @@ namespace VoxelRush.World.Editing
         private int _queuedThisTick;
 
         /// <param name="sink">Durability target; null only for transient worlds (race overlays, tests).</param>
-        public WorldAuthority(EditValidator validator, int maxEditsPerSecond = DefaultMaxEditsPerSecond, int maxQueuedPerTick = DefaultMaxQueuedPerTick, int operationMemory = DefaultOperationMemory, IMutationSink? sink = null)
+        /// <param name="roleOf">Server-side membership lookup (SAVE-004); defaults to Editor for every actor (open test sandbox).</param>
+        public WorldAuthority(EditValidator validator, int maxEditsPerSecond = DefaultMaxEditsPerSecond, int maxQueuedPerTick = DefaultMaxQueuedPerTick, int operationMemory = DefaultOperationMemory, IMutationSink? sink = null, Func<string, WorldRole>? roleOf = null)
         {
             _validator = validator;
             _sink = sink;
+            _roleOf = roleOf ?? (_ => WorldRole.Editor);
             _maxEditsPerSecond = maxEditsPerSecond;
             _maxQueuedPerTick = maxQueuedPerTick;
             _operationMemory = operationMemory;
@@ -153,7 +156,7 @@ namespace VoxelRush.World.Editing
 
             BlockPos target = ChunkMath.ToWorld(intent.Chunk, local);
             byte blockType = intent.Action == EditAction.Remove ? BlockIds.Air : intent.BlockType;
-            EditRejection rule = _validator.Validate(intent.Action, target, intent.BlockType, eyeX, eyeY, eyeZ, this, occupants);
+            EditRejection rule = _validator.Validate(intent.Action, target, intent.BlockType, eyeX, eyeY, eyeZ, this, occupants, _roleOf(actorId));
             if (rule != EditRejection.None)
             {
                 return EditResult.Reject(rule);
