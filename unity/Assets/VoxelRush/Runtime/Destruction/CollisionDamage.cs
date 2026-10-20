@@ -94,15 +94,16 @@ namespace VoxelRush.Destruction
 
     public readonly struct ImpactResult
     {
-        public ImpactResult(EditRejection zone, bool deduplicated, int damage, DamageResult damageResult)
+        public ImpactResult(EditRejection zone, bool deduplicated, int damage, DamageResult damageResult, ChunkMutationBatch? batch = null)
         {
             Zone = zone;
             Deduplicated = deduplicated;
             Damage = damage;
             DamageResult = damageResult;
+            Batch = batch;
         }
 
-        /// <summary>Zone refusal (Protected, ActiveRace) when not None.</summary>
+        /// <summary>Refusal (Protected, ActiveRace, chunk not loaded, journal backpressure) when not None.</summary>
         public EditRejection Zone { get; }
 
         public bool Deduplicated { get; }
@@ -111,10 +112,17 @@ namespace VoxelRush.Destruction
 
         public DamageResult DamageResult { get; }
 
+        /// <summary>The journaled removal when the impact destroyed the block.</summary>
+        public ChunkMutationBatch? Batch { get; }
+
         public bool Applied => Zone == EditRejection.None && !Deduplicated && DamageResult.Outcome != DamageOutcome.Ignored;
     }
 
-    /// <summary>Server-side collision damage: model + zones + dedup + sparse HP. Inputs are server physics, never client claims.</summary>
+    /// <summary>
+    /// Server-side collision damage: model + zones + dedup + sparse HP. Inputs are server physics, never client claims.
+    /// A destroying hit is committed through the authority (journaled and replicated like any edit); HP-only damage
+    /// stays in the ledger.
+    /// </summary>
     public sealed class ImpactResolver
     {
         private readonly CollisionDamageModel _model;
@@ -132,18 +140,19 @@ namespace VoxelRush.Destruction
 
         public long Duplicates { get; private set; }
 
-        public ImpactResult Resolve(string actor, BlockPos target, float normalSpeed, float effectiveMass, double now, ChunkData chunk, ChunkDamage damage)
+        public ImpactResult Resolve(WorldAuthority world, DamageLedger ledger, string actor, BlockPos target, float normalSpeed, float effectiveMass, double now, uint serverTick)
         {
-            if (!ChunkMath.ToChunk(target).Equals(chunk.Coord))
-            {
-                throw new ArgumentException($"Block {target} is not in chunk {chunk.Coord}.", nameof(target));
-            }
-
             int amount = _model.Damage(normalSpeed, effectiveMass);
             if (amount == 0)
             {
                 // Grazes and resting contact neither damage nor open a window.
                 return new ImpactResult(EditRejection.None, false, 0, default);
+            }
+
+            ChunkData? chunk = world.GetChunk(ChunkMath.ToChunk(target));
+            if (chunk == null)
+            {
+                return new ImpactResult(EditRejection.ChunkNotLoaded, false, amount, default);
             }
 
             EditRejection zone = _zones.Authorize(target, WorldRole.Visitor, ZoneAction.Damage);
@@ -158,8 +167,30 @@ namespace VoxelRush.Destruction
                 return new ImpactResult(EditRejection.None, true, amount, default);
             }
 
+            LocalBlock local = ChunkMath.ToLocal(target);
+            ChunkDamage damage = ledger.For(chunk.Coord);
+            byte type = chunk.Get(local);
+            ushort hp = damage.GetHp(chunk, local);
+            if (type == BlockIds.Air || !ledger.Materials.TryGet(type, out BlockMaterial material) || material.IsIndestructible)
+            {
+                return new ImpactResult(EditRejection.None, false, amount, new DamageResult(DamageOutcome.Ignored, hp));
+            }
+
             Impacts++;
-            return new ImpactResult(EditRejection.None, false, amount, damage.Apply(chunk, ChunkMath.ToLocal(target), amount));
+            if (hp > amount)
+            {
+                return new ImpactResult(EditRejection.None, false, amount, damage.Apply(chunk, local, amount, removeOnDestroy: false));
+            }
+
+            ServerCommitResult commit = world.CommitServerChanges(Guid.NewGuid(), actor, new[] { new ChunkChanges(chunk.Coord, new[] { new BlockChange((ushort)local.Index, BlockIds.Air) }) }, serverTick);
+            if (!commit.Accepted)
+            {
+                // Couldn't make the removal durable: leave block and HP as they were.
+                return new ImpactResult(commit.Rejection, false, amount, default);
+            }
+
+            damage.OnBlockReplaced(local);
+            return new ImpactResult(EditRejection.None, false, amount, new DamageResult(DamageOutcome.Destroyed, 0), commit.Batches[0]);
         }
     }
 }
