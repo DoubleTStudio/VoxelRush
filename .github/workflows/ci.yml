@@ -62,12 +62,18 @@ jobs:
     env:
       UNITY_TEST_BUILD_TARGET: ""
       BUILD_IOS: ${{ github.event_name != 'pull_request' }}
+      # Hub 3.2x debs install here; unity-setup v2.6.0 still defaults to /opt/unityhub.
+      UNITY_HUB_PATH: /usr/lib/unityhub/unityhub
     steps:
-      # Editor, Android SDK/NDK and Library exceed the default runner disk.
-      - uses: jlumbroso/free-disk-space@ceedf095f4ec1a097402bc6bd80831f2e1a6fde6 # v2.0.0
-        with:
-          tool-cache: false
-          android: true
+      # Editor + modules + Library + builds need ~25 GB; fail fast on a smaller runner.
+      - name: Check free disk space
+        run: |
+          free_gb=$(df --output=avail -BG / | tail -1 | tr -dc '0-9')
+          echo "Free disk: ${free_gb} GB"
+          if (( free_gb < 40 )); then
+            echo "::error::Only ${free_gb} GB free; the Unity job needs at least 40 GB."
+            exit 1
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: true
@@ -82,6 +88,7 @@ jobs:
           version-file: unity/ProjectSettings/ProjectVersion.txt
           build-targets: ${{ env.BUILD_IOS == 'true' && 'StandaloneLinux64, Android, iOS' || 'StandaloneLinux64, Android' }}
           modules: linux-server
+          hub-version: 3.22.3
       # Post step returns the seat, so Personal activations are not leaked between runs.
       - uses: RageAgainstThePixel/activate-unity-license@e73ff1f81db81a2595f86642123ce2b73b9a9258 # v2.2.2
         with:
