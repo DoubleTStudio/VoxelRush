@@ -4,6 +4,8 @@ using System.Net.Sockets;
 using UnityEngine;
 using VoxelRush.Core.Diagnostics;
 using VoxelRush.Core.Hosting;
+using VoxelRush.Networking.Bots;
+using VoxelRush.Networking.World;
 
 namespace VoxelRush.Networking
 {
@@ -29,6 +31,7 @@ namespace VoxelRush.Networking
         [SerializeField] private string _editorEndpoint = "127.0.0.1:7777";
 
         private ClientNetwork? _network;
+        private WorldSyncClient? _world;
         private int? _smokeTestSeconds;
         private double _startedAt;
         private double _connectedAt = -1;
@@ -51,6 +54,11 @@ namespace VoxelRush.Networking
             }
 
             _smokeTestSeconds = result.Options!.SmokeTestSeconds;
+            if (Array.IndexOf(Environment.GetCommandLineArgs(), BotBuilder.BuildArgument) >= 0)
+            {
+                gameObject.AddComponent<BotBuilder>();
+            }
+
             ServerEndpoint? endpoint = result.Options.Connect ?? EditorEndpoint();
             if (endpoint == null)
             {
@@ -63,6 +71,7 @@ namespace VoxelRush.Networking
 
         private void Update()
         {
+            _world?.Tick();
             if (_smokeTestSeconds is not int seconds)
             {
                 return;
@@ -71,6 +80,7 @@ namespace VoxelRush.Networking
             double now = Time.realtimeSinceStartupAsDouble;
             if (_connectedAt >= 0 && now - _connectedAt >= seconds)
             {
+                _world?.LogHashes();
                 Debug.Log(LogEvent.Format("client_smoke_test_passed", ("connectedSeconds", now - _connectedAt)));
                 Exit(ExitCodeSuccess);
             }
@@ -111,6 +121,8 @@ namespace VoxelRush.Networking
             _network.Connected += () =>
             {
                 _connectedAt = Time.realtimeSinceStartupAsDouble;
+                _world = new WorldSyncClient(Unity.Netcode.NetworkManager.Singleton);
+                BotBuilder.World = _world;
                 Debug.Log(LogEvent.Format("client_connected", ("endpoint", endpoint), ("seconds", _connectedAt - _startedAt)));
             };
             _network.Disconnected += reason =>

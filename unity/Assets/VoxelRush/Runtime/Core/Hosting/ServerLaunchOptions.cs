@@ -12,11 +12,13 @@ namespace VoxelRush.Core.Hosting
         public const string PortArgument = "-port";
         public const string MaxPlayersArgument = "-maxPlayers";
         public const string SmokeTestTicksArgument = "-smokeTestTicks";
+        public const string WorldDirArgument = "-worldDir";
+        private const int MaxWorldDirLength = 512;
 
         // Upper bound keeps a misconfigured smoke run from hanging CI for hours.
         public const int MaxSmokeTestTicks = SimulationConstants.ServerTickRate * 600;
 
-        public ServerLaunchOptions(ushort port, int maxPlayers, int? smokeTestTicks)
+        public ServerLaunchOptions(ushort port, int maxPlayers, int? smokeTestTicks, string? worldDir = null)
         {
             if (port == 0)
             {
@@ -36,6 +38,7 @@ namespace VoxelRush.Core.Hosting
             Port = port;
             MaxPlayers = maxPlayers;
             SmokeTestTicks = smokeTestTicks;
+            WorldDir = worldDir;
         }
 
         public static ServerLaunchOptions Default { get; } =
@@ -47,6 +50,9 @@ namespace VoxelRush.Core.Hosting
 
         /// <summary>When set, the server exits successfully after this many ticks.</summary>
         public int? SmokeTestTicks { get; }
+
+        /// <summary>Directory for the world journal and snapshots; null uses the default under $HOME.</summary>
+        public string? WorldDir { get; }
 
         /// <summary>
         /// Parses known arguments; unknown arguments are ignored because the Unity player
@@ -63,6 +69,7 @@ namespace VoxelRush.Core.Hosting
             ushort port = DefaultPort;
             int maxPlayers = SimulationConstants.MaxPlayersPerServer;
             int? smokeTestTicks = null;
+            string? worldDir = null;
 
             for (int i = 0; i < args.Count; i++)
             {
@@ -95,6 +102,17 @@ namespace VoxelRush.Core.Hosting
                         maxPlayers = SimulationConstants.MaxPlayersPerServer;
                     }
                 }
+                else if (Matches(arg, WorldDirArgument))
+                {
+                    if (value.Length == 0 || value.Length > MaxWorldDirLength || value.IndexOf('\0') >= 0)
+                    {
+                        errors.Add($"{WorldDirArgument} must be a path of 1..{MaxWorldDirLength} characters.");
+                    }
+                    else
+                    {
+                        worldDir = value;
+                    }
+                }
                 else if (Matches(arg, SmokeTestTicksArgument))
                 {
                     if (TryParseBounded(value, 1, MaxSmokeTestTicks, out int ticks))
@@ -109,12 +127,12 @@ namespace VoxelRush.Core.Hosting
             }
 
             return errors.Count == 0
-                ? ServerLaunchParseResult.Success(new ServerLaunchOptions(port, maxPlayers, smokeTestTicks))
+                ? ServerLaunchParseResult.Success(new ServerLaunchOptions(port, maxPlayers, smokeTestTicks, worldDir))
                 : ServerLaunchParseResult.Failure(errors);
         }
 
         private static bool IsKnown(string arg) =>
-            Matches(arg, PortArgument) || Matches(arg, MaxPlayersArgument) || Matches(arg, SmokeTestTicksArgument);
+            Matches(arg, PortArgument) || Matches(arg, MaxPlayersArgument) || Matches(arg, SmokeTestTicksArgument) || Matches(arg, WorldDirArgument);
 
         private static bool Matches(string arg, string name) =>
             string.Equals(arg, name, StringComparison.OrdinalIgnoreCase);

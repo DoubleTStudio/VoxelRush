@@ -122,6 +122,9 @@ jobs:
       # VR-012 DoD: two predicted cars at 100 ms RTT on the authoritative server; a speed hack is rejected.
       - name: Drive test (2 predicted cars, 100 ms RTT, speed hack)
         run: tools/smoke-drive.sh docker
+      # VR-033 DoD: late-join chunk hashes match the server's, and survive a server restart (journal recovery).
+      - name: World sync test (builders, late join, restart)
+        run: tools/smoke-world.sh docker
       # VR-013: 8-player load; main/manual only (8 bot processes on the runner).
       - name: Load test (8 bots, 30 Hz tick metrics)
         if: env.BUILD_IOS == 'true'
@@ -147,6 +150,8 @@ jobs:
             artifacts/build-logs/
             artifacts/smoke-join/
             artifacts/smoke-drive/
+            artifacts/smoke-world/*.log
+            artifacts/smoke-world/*.hashes
             artifacts/load/
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

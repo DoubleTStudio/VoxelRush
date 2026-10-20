@@ -3,9 +3,11 @@
     "rootNamespace": "VoxelRush.Networking",
     "references": [
         "VoxelRush.Core",
+        "VoxelRush.World",
         "VoxelRush.Gameplay",
         "Unity.Netcode.Runtime",
-        "Unity.Networking.Transport"
+        "Unity.Networking.Transport",
+        "Unity.Collections"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

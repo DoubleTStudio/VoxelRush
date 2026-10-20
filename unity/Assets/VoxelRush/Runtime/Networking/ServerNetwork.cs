@@ -38,6 +38,12 @@ namespace VoxelRush.Networking
 
         public int PlayerCount => _gate.ConnectedCount;
 
+        /// <summary>Creates the world sync server on this listener (keeps NGO types inside the Networking assembly).</summary>
+        public World.WorldSyncServer CreateWorldSync(
+            VoxelRush.World.Sync.WorldInfo info, string directory, Func<ulong, UnityEngine.Vector3?> actorEye,
+            Func<IReadOnlyList<VoxelRush.World.Editing.WorldBox>> occupants) =>
+            new World.WorldSyncServer(_manager, info, directory, actorEye, occupants);
+
         public static ServerNetwork? Start(ushort port, int maxPlayers)
         {
             NetworkManager manager = NetworkRuntime.Create("ServerNetwork");
