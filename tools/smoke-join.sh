@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# VR-002 join test: a dedicated server plus headless clients, checked via structured logs and exit codes.
+# VR-002 join test: a dedicated server plus headless bots (client logic in a server-subtarget player),
+# checked via structured logs and exit codes.
 #   Scenario 1: two clients join a server and stay connected.
 #   Scenario 2: with -maxPlayers 1 the second client is rejected with reason=server_full.
-# Usage: tools/smoke-join.sh native   macOS server + client builds (build/server-mac, build/client-mac)
-#        tools/smoke-join.sh docker   Linux server image (UDP published) + Linux client build on the host (x86-64 Linux)
-# Clients run on the host in docker mode: the desktop player segfaults in a bare container (no X11/window libs).
+# Usage: tools/smoke-join.sh native   macOS server + bot builds (build/server-mac, build/bot-mac)
+#        tools/smoke-join.sh docker   Linux server image + Linux bots in containers on one network, by DNS name (x86-64 hosts)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -12,6 +12,9 @@ MODE="${1:-native}"
 LOGS="$ROOT/artifacts/smoke-join"
 PORT=7777
 IMAGE="voxelrush-server:smoke"
+NETWORK="voxelrush-smoke"
+# Same pinned base as the server image.
+BOT_IMAGE="ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac"
 # Every process is time-boxed so a hang fails the test instead of stalling it.
 PROCESS_TIMEOUT=90
 pids=()
@@ -24,6 +27,7 @@ cleanup() {
   for pid in "${pids[@]+"${pids[@]}"}"; do kill "$pid" 2>/dev/null || true; done
   if [[ "$MODE" == "docker" ]]; then
     docker rm -f voxelrush-smoke-server >/dev/null 2>&1 || true
+    docker network rm "$NETWORK" >/dev/null 2>&1 || true
   fi
 }
 trap cleanup EXIT
@@ -34,21 +38,22 @@ start_server() {
   if [[ "$MODE" == "native" ]]; then
     perl -e 'alarm shift; exec @ARGV' "$PROCESS_TIMEOUT" "$ROOT/build/server-mac/VoxelRush" -batchmode -nographics -logFile - -port "$PORT" "$@" >"$log" 2>&1 &
   else
-    docker run --rm --init --name voxelrush-smoke-server -p "$PORT:$PORT/udp" --stop-timeout 5 "$IMAGE" -port "$PORT" "$@" >"$log" 2>&1 &
+    docker run --rm --init --name voxelrush-smoke-server --network "$NETWORK" --stop-timeout 5 "$IMAGE" -port "$PORT" "$@" >"$log" 2>&1 &
   fi
   SERVER_PID=$!
   pids+=("$SERVER_PID")
 }
 
-# start_client <log> <client args...> -> runs in background, sets CLIENT_PID (no subshell, so `wait` works)
+# start_client <log> <bot args...> -> runs in background, sets CLIENT_PID (no subshell, so `wait` works)
 start_client() {
   local log="$1"; shift
   if [[ "$MODE" == "native" ]]; then
-    perl -e 'alarm shift; exec @ARGV' "$PROCESS_TIMEOUT" "$ROOT/build/client-mac/VoxelRushClient.app/Contents/MacOS/VoxelRush" -batchmode -nographics -logFile - \
+    perl -e 'alarm shift; exec @ARGV' "$PROCESS_TIMEOUT" "$ROOT/build/bot-mac/VoxelRush" -batchmode -nographics -logFile - \
       -connect "127.0.0.1:$PORT" "$@" >"$log" 2>&1 &
   else
-    timeout --kill-after=10 "$PROCESS_TIMEOUT" "$ROOT/build/client-linux/VoxelRushClient.x86_64" -batchmode -nographics -logFile - \
-      -connect "127.0.0.1:$PORT" "$@" >"$log" 2>&1 &
+    docker run --rm --init --network "$NETWORK" --user 10001 -e HOME=/tmp -v "$ROOT/build/bot-linux:/bot:ro" "$BOT_IMAGE" \
+      timeout --kill-after=10 "$PROCESS_TIMEOUT" /bot/VoxelRushBot.x86_64 -batchmode -nographics -logFile - \
+      -connect "voxelrush-smoke-server:$PORT" "$@" >"$log" 2>&1 &
   fi
   CLIENT_PID=$!
   pids+=("$CLIENT_PID")
@@ -72,6 +77,7 @@ expect_exit() {
 
 if [[ "$MODE" == "docker" ]]; then
   docker build -q -f "$ROOT/docker/server/Dockerfile" -t "$IMAGE" "$ROOT/build/server" >/dev/null
+  docker network create "$NETWORK" >/dev/null
 fi
 
 echo "== scenario 1: two clients join"

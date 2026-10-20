@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds a player into build/<target>/.
-# Usage: tools/build.sh <android|ios|server|server-mac|client-linux|client-mac> [--development]
+# Usage: tools/build.sh <android|ios|server|server-mac|bot-linux|bot-mac> [--development]
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -14,9 +14,9 @@ case "${1:-}" in
   ios)          METHOD=BuildIos;         TARGET=(-buildTarget iOS);      OUTPUT="$ROOT/build/ios/Xcode" ;;
   server)       METHOD=BuildLinuxServer; TARGET=(-buildTarget Linux64 -standaloneBuildSubtarget Server); OUTPUT="$ROOT/build/server/VoxelRushServer.x86_64" ;;
   server-mac)   METHOD=BuildMacServer;   TARGET=(-buildTarget OSXUniversal -standaloneBuildSubtarget Server); OUTPUT="$ROOT/build/server-mac" ;;
-  client-linux) METHOD=BuildLinuxClient; TARGET=(-buildTarget Linux64 -standaloneBuildSubtarget Player); OUTPUT="$ROOT/build/client-linux/VoxelRushClient.x86_64" ;;
-  client-mac)   METHOD=BuildMacClient;   TARGET=(-buildTarget OSXUniversal -standaloneBuildSubtarget Player); OUTPUT="$ROOT/build/client-mac/VoxelRushClient.app" ;;
-  *)            echo "Usage: $0 <android|ios|server|server-mac|client-linux|client-mac> [--development]" >&2; exit 2 ;;
+  bot-linux)    METHOD=BuildLinuxBot;    TARGET=(-buildTarget Linux64 -standaloneBuildSubtarget Server); OUTPUT="$ROOT/build/bot-linux/VoxelRushBot.x86_64" ;;
+  bot-mac)      METHOD=BuildMacBot;      TARGET=(-buildTarget OSXUniversal -standaloneBuildSubtarget Server); OUTPUT="$ROOT/build/bot-mac" ;;
+  *)            echo "Usage: $0 <android|ios|server|server-mac|bot-linux|bot-mac> [--development]" >&2; exit 2 ;;
 esac
 
 EXTRA=()

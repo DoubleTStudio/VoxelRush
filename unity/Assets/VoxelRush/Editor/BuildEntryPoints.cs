@@ -15,6 +15,7 @@ namespace VoxelRush.Editor
     {
         public const string ClientScene = "Assets/VoxelRush/Scenes/Client.unity";
         public const string ServerScene = "Assets/VoxelRush/Scenes/Server.unity";
+        public const string BotScene = "Assets/VoxelRush/Scenes/Bot.unity";
 
         private const string OutputArgument = "-buildOutput";
         private const string DevelopmentArgument = "-developmentBuild";
@@ -44,12 +45,13 @@ namespace VoxelRush.Editor
         public static void BuildMacServer() =>
             Build(BuildTarget.StandaloneOSX, StandaloneBuildSubtarget.Server, ServerScene, "Builds/ServerMac");
 
-        // Desktop client players run headless (-batchmode -nographics -connect) as join-test bots; not shipped.
-        public static void BuildLinuxClient() =>
-            Build(BuildTarget.StandaloneLinux64, StandaloneBuildSubtarget.Player, ClientScene, "Builds/ClientLinux/VoxelRushClient.x86_64");
+        // Headless bots: client connection logic in a server-subtarget player (no window/audio), for join and load tests.
+        // Desktop players crash headless on Linux without a window system, so bots never use the Player subtarget.
+        public static void BuildLinuxBot() =>
+            Build(BuildTarget.StandaloneLinux64, StandaloneBuildSubtarget.Server, BotScene, "Builds/BotLinux/VoxelRushBot.x86_64");
 
-        public static void BuildMacClient() =>
-            Build(BuildTarget.StandaloneOSX, StandaloneBuildSubtarget.Player, ClientScene, "Builds/ClientMac/VoxelRushClient.app");
+        public static void BuildMacBot() =>
+            Build(BuildTarget.StandaloneOSX, StandaloneBuildSubtarget.Server, BotScene, "Builds/BotMac");
 
         [MenuItem("VoxelRush/Build/Android (APK)")]
         private static void BuildAndroidMenu() => BuildAndroid();

@@ -14,6 +14,7 @@ VR-002 needs clients to join an authoritative Linux dedicated server. CONTRACTS.
 - **Scene management off** (`EnableSceneManagement = false`): server and client run different scenes, and the world is streamed as chunks (M2), not NGO scene sync. NGO's default made clients wait for the server's `Server.unity`, which the client build doesn't contain.
 - **Tick:** `NetworkConfig.TickRate = 30` (ADR-002 / SYSTEM.md).
 - **Graceful client exit:** clients run NGO shutdown to completion (≤1 s) before quitting, so the server frees the slot immediately instead of after a transport timeout.
+- **Headless clients are bots:** `Bot.unity` built with the Server subtarget, running the same `ClientBootstrap` as `Client.unity`. Linux desktop (Player subtarget) builds segfault without a window system even under `-nographics`.
 - **Endpoints:** clients take `-connect host:port` (IPv4 or DNS name, resolved once at connect time; Unity Transport needs a literal IP). Mobile endpoints arrive with join tickets (VR-080).
 
 ## Alternatives

@@ -4,13 +4,13 @@ using System.Net.Sockets;
 using UnityEngine;
 using VoxelRush.Core.Diagnostics;
 using VoxelRush.Core.Hosting;
-using VoxelRush.Networking;
 
-namespace VoxelRush.Presentation
+namespace VoxelRush.Networking
 {
     /// <summary>
-    /// Connects the client to a dedicated server from <c>-connect host:port</c> (desktop/headless test clients)
-    /// or, in the editor, from the dev endpoint below. Mobile endpoints arrive with join tickets (VR-080).
+    /// Connects to a dedicated server from <c>-connect host:port</c> or, in the editor, from the dev endpoint below.
+    /// Used by the mobile client scene and by headless bots (Bot.unity, built as a server-subtarget player).
+    /// Mobile endpoints arrive with join tickets (VR-080).
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class ClientBootstrap : MonoBehaviour

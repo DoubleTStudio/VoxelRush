@@ -239,7 +239,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 6e3dbb47e5381495fb987fc5bcd4a046, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: VoxelRush.Presentation::VoxelRush.Presentation.ClientBootstrap
+  m_EditorClassIdentifier: VoxelRush.Networking::VoxelRush.Networking.ClientBootstrap
   _connectInEditor: 0
   _editorEndpoint: 127.0.0.1:7777
 --- !u!4 &510578674

@@ -12,7 +12,8 @@ namespace VoxelRush.Tests.EditMode
     {
         // Matched by name: Presentation is compiled out while the editor targets the dedicated server.
         [TestCase(BuildEntryPoints.ClientScene, "VoxelRush.Presentation.ClientSmokeProbe")]
-        [TestCase(BuildEntryPoints.ClientScene, "VoxelRush.Presentation.ClientBootstrap")]
+        [TestCase(BuildEntryPoints.ClientScene, "VoxelRush.Networking.ClientBootstrap")]
+        [TestCase(BuildEntryPoints.BotScene, "VoxelRush.Networking.ClientBootstrap")]
         [TestCase(BuildEntryPoints.ServerScene, "VoxelRush.Server.ServerHost")]
         public void Scene_ContainsExactlyOneEntryComponent(string scenePath, string componentType)
         {
@@ -39,10 +40,11 @@ namespace VoxelRush.Tests.EditMode
         private static bool IsTypeLoaded(string fullName) =>
             AppDomain.CurrentDomain.GetAssemblies().Any(assembly => assembly.GetType(fullName, false) != null);
 
-        [Test]
-        public void ServerScene_HasNoCameraOrAudioListener()
+        [TestCase(BuildEntryPoints.ServerScene)]
+        [TestCase(BuildEntryPoints.BotScene)]
+        public void HeadlessScene_HasNoCameraOrAudioListener(string scenePath)
         {
-            Scene scene = EditorSceneManager.OpenScene(BuildEntryPoints.ServerScene, OpenSceneMode.Additive);
+            Scene scene = EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Additive);
             try
             {
                 var roots = scene.GetRootGameObjects();

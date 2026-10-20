@@ -108,10 +108,10 @@ jobs:
       - name: Server smoke test
         run: tools/smoke-server.sh build/server
 
-      # VR-002 DoD: server image + two headless Linux clients join; with -maxPlayers 1 the second is refused.
-      - name: Build Linux headless client
-        run: tools/build.sh client-linux
-      - name: Join test (Docker server image + 2 clients)
+      # VR-002 DoD: server image + two headless Linux bots join; with -maxPlayers 1 the second is refused.
+      - name: Build Linux headless bot
+        run: tools/build.sh bot-linux
+      - name: Join test (Docker server image + 2 bots)
         run: tools/smoke-join.sh docker
 
       - name: Build Android APK

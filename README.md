@@ -41,12 +41,12 @@ tools/build.sh android      # build/android/VoxelRush.apk
 tools/build.sh ios          # build/ios/Xcode (archive/sign in Xcode or CI)
 tools/build.sh server       # build/server/VoxelRushServer.x86_64 (headless Linux)
 tools/build.sh server-mac   # build/server-mac/VoxelRush (headless macOS, for local runs)
-tools/build.sh client-linux # build/client-linux (headless test client)
-tools/build.sh client-mac   # build/client-mac (headless test client, local runs)
+tools/build.sh bot-linux    # build/bot-linux (headless bot: client logic, server-subtarget player)
+tools/build.sh bot-mac      # build/bot-mac (headless bot, local runs)
 tools/smoke-server.sh       # run the Linux server build in an amd64 Ubuntu container (x86-64 hosts)
 SMOKE_NATIVE=1 tools/smoke-server.sh build/server-mac   # same checks against the macOS build
-tools/smoke-join.sh docker  # server image (UDP published) + 2 Linux clients on the host; server-full rejection (x86-64 Linux)
-tools/smoke-join.sh native  # same with the macOS server + client builds
+tools/smoke-join.sh docker  # server image + 2 Linux bots on one Docker network; server-full rejection (x86-64 hosts)
+tools/smoke-join.sh native  # same with the macOS server + bot builds
 ```
 Unity must not already have the project open when running batch-mode commands.
 On Apple Silicon the Linux (amd64 Mono) server aborts under Docker's Rosetta emulation; use the `server-mac` build locally. See ADR-012.
@@ -66,8 +66,9 @@ tools/build.sh server
 docker compose -f docker/compose.yaml up --build
 ```
 
-## Test client
-Desktop/headless client builds connect with `-connect host:port [-smokeTestSeconds N]` (exit `0` stayed connected, `3` connect failed or rejected).
+## Test client and bots
+Clients connect with `-connect host:port [-smokeTestSeconds N]` (exit `0` stayed connected, `3` connect failed or rejected).
+Headless bots (`Bot.unity`) run the same connection component in a server-subtarget player; Linux desktop players crash without a window system, so automated clients are always bots.
 In the editor, enable *Connect In Editor* on the `ClientBootstrap` object in `Client.unity`.
 Connection handshake and admission rules: `docs/adr/ADR-014-netcode-connection-handshake.md`.
 
