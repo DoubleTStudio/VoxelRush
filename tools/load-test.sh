@@ -63,6 +63,8 @@ code=0; wait "$SERVER_PID" || code=$?
 [[ $failed -eq 0 ]] || fail "a bot failed (see $LOGS/bot*.log)"
 [[ $code -eq 0 ]] || fail "server exit $code"
 [[ $(grep -c "event=vehicle_spawned " "$LOGS/server.log") -eq "$BOTS" ]] || fail "expected $BOTS vehicles spawned"
+spawns=$(grep "event=vehicle_spawned " "$LOGS/server.log" | sed -nE 's/.*position="([^"]+)".*/\1/p' | sort -u | wc -l | tr -d ' ')
+[[ "$spawns" -eq "$BOTS" ]] || fail "only $spawns distinct spawn points for $BOTS cars"
 
 python3 -I - "$LOGS" "$BOTS" "$RTT_MS" <<'PY'
 import json, re, sys
