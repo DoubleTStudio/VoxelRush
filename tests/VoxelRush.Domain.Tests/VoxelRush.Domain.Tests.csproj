@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Compiles engine-free Unity sources (Core, World) and their Domain tests so they run on plain .NET (Linux CI). -->
+  <!-- Compiles engine-free Unity sources (Core, World, Destruction) and their Domain tests so they run on plain .NET (Linux CI). -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <!-- C# 9 and NUnit 3.x match Unity 6 so tests that pass here also compile in the editor. -->
@@ -16,6 +16,7 @@
   <ItemGroup>
     <Compile Include="$(UnityAssets)Runtime/Core/**/*.cs" LinkBase="Core" />
     <Compile Include="$(UnityAssets)Runtime/World/**/*.cs" LinkBase="World" />
+    <Compile Include="$(UnityAssets)Runtime/Destruction/**/*.cs" LinkBase="Destruction" />
     <Compile Include="$(UnityAssets)Tests/Domain/**/*.cs" LinkBase="Tests" />
   </ItemGroup>
 
