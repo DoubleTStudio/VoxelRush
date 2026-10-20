@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using VoxelRush.Destruction;
 using VoxelRush.World.Chunks;
@@ -77,30 +79,39 @@ namespace VoxelRush.Tests.Domain.Destruction
             Assert.That(dedup.OpenWindows, Is.Zero);
         }
 
-        private static ChunkData Chunk(ChunkCoord coord, byte fill)
+        private static WorldAuthority World(byte fill, IMutationSink? sink = null, params ChunkCoord[] coords)
         {
-            var blocks = new byte[ChunkMath.Volume];
-            for (int i = 0; i < 256; i++)
+            var world = new WorldAuthority(new EditValidator(ZoneMap.Empty), sink: sink);
+            foreach (ChunkCoord coord in coords.Length == 0 ? new[] { new ChunkCoord(0, 0, 0) } : coords)
             {
-                blocks[i] = fill;
+                var blocks = new byte[ChunkMath.Volume];
+                for (int i = 0; i < 256; i++)
+                {
+                    blocks[i] = fill;
+                }
+
+                world.AddChunk(new ChunkData(coord, 1, blocks));
             }
 
-            return new ChunkData(coord, 1, blocks);
+            return world;
         }
+
+        private static ushort Hp(WorldAuthority world, DamageLedger ledger, BlockPos b) =>
+            ledger.For(ChunkMath.ToChunk(b)).GetHp(world.GetChunk(ChunkMath.ToChunk(b))!, ChunkMath.ToLocal(b));
 
         [Test]
         public void DoD_OneImpact_OneDamageWindow()
         {
             // A car pressed against a wall reports a contact every physics step; only the first one damages.
-            ChunkData chunk = Chunk(new ChunkCoord(0, 0, 0), BlockIds.Reinforced);
-            var damage = new ChunkDamage(MaterialCatalog.Default);
+            WorldAuthority world = World(BlockIds.Reinforced);
+            var ledger = new DamageLedger(MaterialCatalog.Default);
             var resolver = new ImpactResolver(Model, new ContactDeduplicator(0.3), ZoneMap.Empty);
             var target = new BlockPos(5, 0, 5);
 
             int applied = 0;
             for (int step = 0; step < 9; step++)     // 9 steps at 30 Hz = 0.3 s of continuous contact
             {
-                if (resolver.Resolve("car-1", target, 10f, CarMass, step / 30.0, chunk, damage).Applied)
+                if (resolver.Resolve(world, ledger, "car-1", target, 10f, CarMass, step / 30.0, (uint)step).Applied)
                 {
                     applied++;
                 }
@@ -108,58 +119,78 @@ namespace VoxelRush.Tests.Domain.Destruction
 
             Assert.That(applied, Is.EqualTo(1));
             Assert.That(resolver.Duplicates, Is.EqualTo(8));
-            Assert.That(damage.GetHp(chunk, ChunkMath.ToLocal(target)), Is.EqualTo(300 - 104));
+            Assert.That(Hp(world, ledger, target), Is.EqualTo(300 - 104));
 
             // Bouncing back for a second hit after the window is a second impact.
-            Assert.That(resolver.Resolve("car-1", target, 10f, CarMass, 0.5, chunk, damage).Applied, Is.True);
-            Assert.That(damage.GetHp(chunk, ChunkMath.ToLocal(target)), Is.EqualTo(300 - 208));
+            Assert.That(resolver.Resolve(world, ledger, "car-1", target, 10f, CarMass, 0.5, 15).Applied, Is.True);
+            Assert.That(Hp(world, ledger, target), Is.EqualTo(300 - 208));
+            Assert.That(world.GetChunk(new ChunkCoord(0, 0, 0))!.Revision, Is.Zero, "damage alone isn't a block change");
         }
 
         [Test]
-        public void ConcurrentHits_FromTwoCars_BothCount()
+        public void ConcurrentHits_FromTwoCars_BothCount_AndTheKillIsJournaled()
         {
-            ChunkData chunk = Chunk(new ChunkCoord(0, 0, 0), BlockIds.Stone);
-            var damage = new ChunkDamage(MaterialCatalog.Default);
+            var sink = new RecordingSink();
+            WorldAuthority world = World(BlockIds.Stone, sink);
+            var ledger = new DamageLedger(MaterialCatalog.Default);
             var resolver = new ImpactResolver(Model, new ContactDeduplicator(), ZoneMap.Empty);
             var target = new BlockPos(5, 0, 5);
 
-            resolver.Resolve("car-1", target, 10f, CarMass, 1.0, chunk, damage);
-            ImpactResult second = resolver.Resolve("car-2", target, 10f, CarMass, 1.0, chunk, damage);
+            resolver.Resolve(world, ledger, "car-1", target, 10f, CarMass, 1.0, 30);
+            ImpactResult second = resolver.Resolve(world, ledger, "car-2", target, 10f, CarMass, 1.0, 30);
 
             Assert.That(second.DamageResult.Outcome, Is.EqualTo(DamageOutcome.Destroyed), "104 + 104 >= stone 120");
-            Assert.That(chunk.Get(ChunkMath.ToLocal(target)), Is.EqualTo(BlockIds.Air));
+            Assert.That(world.GetBlock(target), Is.EqualTo(BlockIds.Air));
+            Assert.That(sink.Batches.Single(), Is.SameAs(second.Batch), "removal goes through the authority (journal, replication)");
+            Assert.That(second.Batch!.ActorId, Is.EqualTo("car-2"));
+        }
+
+        [Test]
+        public void JournalBackpressure_LeavesBlockAndHpUntouched()
+        {
+            var sink = new RecordingSink { Full = true };
+            WorldAuthority world = World(BlockIds.Wood, sink);
+            var ledger = new DamageLedger(MaterialCatalog.Default);
+            var target = new BlockPos(2, 0, 2);
+
+            ImpactResult r = new ImpactResolver(Model, new ContactDeduplicator(), ZoneMap.Empty).Resolve(world, ledger, "car", target, 20f, CarMass, 0, 1);
+
+            Assert.That(r.Zone, Is.EqualTo(EditRejection.PersistenceBackpressure));
+            Assert.That(world.GetBlock(target), Is.EqualTo(BlockIds.Wood));
+            Assert.That(Hp(world, ledger, target), Is.EqualTo(50));
         }
 
         [Test]
         public void CrossChunkBorder_EachBlockDamagedInItsOwnChunk()
         {
-            ChunkData left = Chunk(new ChunkCoord(-1, 0, 0), BlockIds.Wood), right = Chunk(new ChunkCoord(0, 0, 0), BlockIds.Wood);
-            var damageLeft = new ChunkDamage(MaterialCatalog.Default);
-            var damageRight = new ChunkDamage(MaterialCatalog.Default);
+            WorldAuthority world = World(BlockIds.Wood, null, new ChunkCoord(-1, 0, 0), new ChunkCoord(0, 0, 0));
+            var ledger = new DamageLedger(MaterialCatalog.Default);
             var resolver = new ImpactResolver(Model, new ContactDeduplicator(), ZoneMap.Empty);
             BlockPos a = new BlockPos(-1, 0, 4), b = new BlockPos(0, 0, 4);
 
-            Assert.That(ChunkMath.ToChunk(a), Is.EqualTo(left.Coord));
-            Assert.That(resolver.Resolve("car", a, 6f, CarMass, 0, left, damageLeft).Applied, Is.True);
-            Assert.That(resolver.Resolve("car", b, 6f, CarMass, 0, right, damageRight).Applied, Is.True);
-            Assert.That(damageLeft.GetHp(left, ChunkMath.ToLocal(a)), Is.EqualTo(50 - 28));
-            Assert.That(damageRight.GetHp(right, ChunkMath.ToLocal(b)), Is.EqualTo(50 - 28));
+            Assert.That(resolver.Resolve(world, ledger, "car", a, 6f, CarMass, 0, 1).Applied, Is.True);
+            Assert.That(resolver.Resolve(world, ledger, "car", b, 6f, CarMass, 0, 1).Applied, Is.True);
+            Assert.That(Hp(world, ledger, a), Is.EqualTo(50 - 28));
+            Assert.That(Hp(world, ledger, b), Is.EqualTo(50 - 28));
         }
 
         [Test]
-        public void TargetOutsideGivenChunk_Throws()
+        public void UnloadedChunk_AndIndestructible_AreNotDamaged()
         {
-            ChunkData chunk = Chunk(new ChunkCoord(0, 0, 0), BlockIds.Stone);
+            WorldAuthority world = World(BlockIds.Protected);
+            var ledger = new DamageLedger(MaterialCatalog.Default);
             var resolver = new ImpactResolver(Model, new ContactDeduplicator(), ZoneMap.Empty);
 
-            Assert.Throws<ArgumentException>(() => resolver.Resolve("car", new BlockPos(16, 0, 0), 10f, CarMass, 0, chunk, new ChunkDamage(MaterialCatalog.Default)));
+            Assert.That(resolver.Resolve(world, ledger, "car", new BlockPos(40, 0, 0), 10f, CarMass, 0, 1).Zone, Is.EqualTo(EditRejection.ChunkNotLoaded));
+            Assert.That(resolver.Resolve(world, ledger, "car", new BlockPos(1, 0, 1), 30f, CarMass, 0, 1).Applied, Is.False);
+            Assert.That(world.GetBlock(new BlockPos(1, 0, 1)), Is.EqualTo(BlockIds.Protected));
         }
 
         [Test]
         public void ProtectedAndLiveTrack_NotDamaged_AndDontOpenWindows()
         {
-            ChunkData chunk = Chunk(new ChunkCoord(0, 0, 0), BlockIds.Stone);
-            var damage = new ChunkDamage(MaterialCatalog.Default);
+            WorldAuthority world = World(BlockIds.Stone);
+            var ledger = new DamageLedger(MaterialCatalog.Default);
             var dedup = new ContactDeduplicator();
             var zones = new ZoneMap(new[]
             {
@@ -168,22 +199,34 @@ namespace VoxelRush.Tests.Domain.Destruction
             });
             var resolver = new ImpactResolver(Model, dedup, zones);
 
-            Assert.That(resolver.Resolve("car", new BlockPos(1, 0, 1), 20f, CarMass, 0, chunk, damage).Zone, Is.EqualTo(EditRejection.ProtectedZone));
-            Assert.That(resolver.Resolve("car", new BlockPos(9, 0, 9), 20f, CarMass, 0, chunk, damage).Zone, Is.EqualTo(EditRejection.RaceLocked));
-            Assert.That(damage.DamagedCount, Is.Zero);
+            Assert.That(resolver.Resolve(world, ledger, "car", new BlockPos(1, 0, 1), 20f, CarMass, 0, 1).Zone, Is.EqualTo(EditRejection.ProtectedZone));
+            Assert.That(resolver.Resolve(world, ledger, "car", new BlockPos(9, 0, 9), 20f, CarMass, 0, 1).Zone, Is.EqualTo(EditRejection.RaceLocked));
+            Assert.That(ledger.For(new ChunkCoord(0, 0, 0)).DamagedCount, Is.Zero);
             Assert.That(dedup.OpenWindows, Is.Zero);
         }
 
         [Test]
         public void Graze_DoesNotOpenWindow_SoTheRealHitStillCounts()
         {
-            ChunkData chunk = Chunk(new ChunkCoord(0, 0, 0), BlockIds.Stone);
-            var damage = new ChunkDamage(MaterialCatalog.Default);
+            WorldAuthority world = World(BlockIds.Stone);
+            var ledger = new DamageLedger(MaterialCatalog.Default);
             var resolver = new ImpactResolver(Model, new ContactDeduplicator(), ZoneMap.Empty);
             var target = new BlockPos(2, 0, 2);
 
-            Assert.That(resolver.Resolve("car", target, 1f, CarMass, 0.00, chunk, damage).Applied, Is.False);
-            Assert.That(resolver.Resolve("car", target, 10f, CarMass, 0.05, chunk, damage).Applied, Is.True);
+            Assert.That(resolver.Resolve(world, ledger, "car", target, 1f, CarMass, 0.00, 1).Applied, Is.False);
+            Assert.That(resolver.Resolve(world, ledger, "car", target, 10f, CarMass, 0.05, 2).Applied, Is.True);
+        }
+
+        private sealed class RecordingSink : IMutationSink
+        {
+            public bool Full;
+            public readonly List<ChunkMutationBatch> Batches = new List<ChunkMutationBatch>();
+
+            public bool CanAccept => !Full;
+
+            public bool CanAcceptMany(int count) => !Full;
+
+            public void Accept(ChunkMutationBatch batch) => Batches.Add(batch);
         }
     }
 }
