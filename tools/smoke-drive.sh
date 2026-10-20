@@ -69,7 +69,9 @@ code=0; wait "$SERVER_PID" || code=$?; [[ $code -eq 0 ]] || fail "server exit $c
 
 [[ $(grep -c "event=vehicle_spawned " "$LOGS/server.log") -eq 2 ]] || fail "expected 2 vehicles spawned"
 
-# Server-side: both cars driven by their owners' inputs, within the speed limit.
+# Server-side: cars spawn at separate points (a car teleported to the origin would make these collide), driven by
+# their owners' inputs, within the speed limit.
+[[ $(grep "event=vehicle_spawned " "$LOGS/server.log" | sed -nE 's/.*position="([^"]+)".*/\1/p' | sort -u | wc -l) -eq 2 ]] || fail "cars spawned at the same point"
 for owner in $(grep "event=vehicle_spawned " "$LOGS/server.log" | sed -nE 's/.*ownerClientId=([0-9]+).*/\1/p'); do
   line=$(grep "event=vehicle_server_stats ownerClientId=$owner " "$LOGS/server.log" | tail -1)
   [[ -n "$line" ]] || fail "no server stats for client $owner"
