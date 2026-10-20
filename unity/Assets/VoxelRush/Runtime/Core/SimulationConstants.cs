@@ -9,7 +9,7 @@ namespace VoxelRush.Core
         /// <summary>Player cap per dedicated server instance.</summary>
         public const int MaxPlayersPerServer = 8;
 
-        /// <summary>Wire protocol version sent in every message header.</summary>
-        public const ushort ProtocolVersion = 1;
+        /// <summary>Wire protocol version sent in every message header. 2: session id in the connection payload (VR-062).</summary>
+        public const ushort ProtocolVersion = 2;
     }
 }

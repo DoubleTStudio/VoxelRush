@@ -9,6 +9,8 @@ namespace VoxelRush.Core.Networking
         MalformedPayload,
         ProtocolMismatch,
         ServerFull,
+        /// <summary>Another connection holds this session (a duplicate or an unclean reconnect; retry after it times out).</summary>
+        SessionInUse,
     }
 
     /// <summary>
@@ -65,20 +67,28 @@ namespace VoxelRush.Core.Networking
 
         public ConnectionRejection TryAdmit(ulong clientId, byte[]? payload, double nowSeconds)
         {
-            if (!ConnectionPayload.TryDecode(payload, out ushort version))
+            if (!ConnectionPayload.TryDecode(payload, out ushort version, out Guid session))
             {
                 return ConnectionRejection.MalformedPayload;
             }
 
-            if (version != ProtocolVersion)
+            if (version != ProtocolVersion || session == Guid.Empty)
             {
                 return ConnectionRejection.ProtocolMismatch;
             }
 
             // A repeated request for an already admitted id keeps its slot rather than taking a second one.
-            if (_slots.ContainsKey(clientId))
+            if (_slots.TryGetValue(clientId, out Slot existing))
             {
-                return ConnectionRejection.None;
+                return existing.Session == session ? ConnectionRejection.None : ConnectionRejection.SessionInUse;
+            }
+
+            foreach (Slot slot in _slots.Values)
+            {
+                if (slot.Session == session)
+                {
+                    return ConnectionRejection.SessionInUse;
+                }
             }
 
             if (_slots.Count >= MaxPlayers)
@@ -86,7 +96,7 @@ namespace VoxelRush.Core.Networking
                 return ConnectionRejection.ServerFull;
             }
 
-            _slots.Add(clientId, new Slot(nowSeconds));
+            _slots.Add(clientId, new Slot(nowSeconds, session));
             return ConnectionRejection.None;
         }
 
@@ -103,6 +113,9 @@ namespace VoxelRush.Core.Networking
         }
 
         public bool Release(ulong clientId) => _slots.Remove(clientId);
+
+        /// <summary>The session id an admitted client presented, or empty.</summary>
+        public Guid SessionOf(ulong clientId) => _slots.TryGetValue(clientId, out Slot slot) ? slot.Session : Guid.Empty;
 
         /// <summary>Frees slots approved but never connected within the timeout (half-open handshakes).</summary>
         public int ExpirePending(double nowSeconds, List<ulong>? expired = null)
@@ -132,17 +145,20 @@ namespace VoxelRush.Core.Networking
 
         private readonly struct Slot
         {
-            public Slot(double admittedAtSeconds, bool connected = false)
+            public Slot(double admittedAtSeconds, Guid session, bool connected = false)
             {
                 AdmittedAtSeconds = admittedAtSeconds;
+                Session = session;
                 Connected = connected;
             }
 
             public double AdmittedAtSeconds { get; }
 
+            public Guid Session { get; }
+
             public bool Connected { get; }
 
-            public Slot AsConnected() => new Slot(AdmittedAtSeconds, true);
+            public Slot AsConnected() => new Slot(AdmittedAtSeconds, Session, true);
         }
     }
 
@@ -155,6 +171,7 @@ namespace VoxelRush.Core.Networking
             ConnectionRejection.MalformedPayload => "malformed_payload",
             ConnectionRejection.ProtocolMismatch => "protocol_mismatch",
             ConnectionRejection.ServerFull => "server_full",
+            ConnectionRejection.SessionInUse => "session_in_use",
             _ => throw new ArgumentOutOfRangeException(nameof(rejection)),
         };
     }

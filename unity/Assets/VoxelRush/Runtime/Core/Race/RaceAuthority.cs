@@ -40,6 +40,9 @@ namespace VoxelRush.Core.Race
 
         public uint ResultsTicks { get; set; } = 10 * SimulationConstants.ServerTickRate;
 
+        /// <summary>How long a disconnected racer keeps its progress for a reconnect.</summary>
+        public uint ReconnectGraceTicks { get; set; } = 30 * SimulationConstants.ServerTickRate;
+
         /// <summary>A race nobody finishes still ends.</summary>
         public uint MaxRaceTicks { get; set; } = 10 * 60 * SimulationConstants.ServerTickRate;
     }
@@ -121,8 +124,59 @@ namespace VoxelRush.Core.Race
             return true;
         }
 
-        /// <summary>A disconnect: the racer keeps no slot (reconnect handling arrives with VR-062).</summary>
-        public void RemoveRacer(string racerId) => _racers.Remove(racerId);
+        /// <summary>
+        /// Before the countdown a disconnect frees the slot; during a race the racer keeps its progress for
+        /// <see cref="RaceTimings.ReconnectGraceTicks"/> and stops being sampled.
+        /// </summary>
+        public void Disconnect(string racerId, uint tick)
+        {
+            if (Phase == RacePhase.Waiting)
+            {
+                _racers.Remove(racerId);
+                return;
+            }
+
+            if (_racers.TryGetValue(racerId, out Racer? racer) && racer.Connected)
+            {
+                racer.Connected = false;
+                racer.DisconnectedTick = tick;
+            }
+        }
+
+        /// <summary>Resumes a disconnected racer within the grace period (same session). False otherwise.</summary>
+        public bool TryReconnect(string racerId, uint tick)
+        {
+            if (!_racers.TryGetValue(racerId, out Racer? racer) || racer.Connected
+                || (Phase != RacePhase.Countdown && Phase != RacePhase.Racing && Phase != RacePhase.Finishing)
+                || tick - racer.DisconnectedTick > Timings.ReconnectGraceTicks)
+            {
+                return false;
+            }
+
+            racer.Connected = true;
+            return true;
+        }
+
+        public bool IsRacer(string racerId) => _racers.ContainsKey(racerId);
+
+        public bool IsConnected(string racerId) => _racers.TryGetValue(racerId, out Racer? r) && r.Connected;
+
+        /// <summary>
+        /// Where a (re)spawned racer's car goes: 4 m past its last validated gate facing along the gate, or the start.
+        /// Heading is a unit XZ direction.
+        /// </summary>
+        public (Vec3 Position, float HeadingX, float HeadingZ) RespawnPose(string racerId)
+        {
+            int crossings = _racers.TryGetValue(racerId, out Racer? r) ? r.Crossings : 0;
+            Gate next = Track.GateAt(Math.Min(crossings, Track.TotalCrossings - 1));
+            if (crossings == 0)
+            {
+                return (Track.Start, next.NormalX, next.NormalZ);
+            }
+
+            Gate last = Track.GateAt(crossings - 1);
+            return (new Vec3(last.X + last.NormalX * 4f, last.Y, last.Z + last.NormalZ * 4f), last.NormalX, last.NormalZ);
+        }
 
         public bool StartCountdown(uint tick)
         {
@@ -146,7 +200,7 @@ namespace VoxelRush.Core.Race
                 case RacePhase.Countdown when elapsed >= Timings.CountdownTicks:
                     Enter(RacePhase.Racing, tick);
                     break;
-                case RacePhase.Racing when _racers.Count == 0 || elapsed >= Timings.MaxRaceTicks:
+                case RacePhase.Racing when ConnectedCount() == 0 || elapsed >= Timings.MaxRaceTicks:
                 case RacePhase.Finishing when elapsed >= Timings.FinishingTicks || AllFinished():
                     EnterResults(tick);
                     break;
@@ -177,7 +231,7 @@ namespace VoxelRush.Core.Race
                 return CrossingOutcome.UnknownRacer;
             }
 
-            if (Phase != RacePhase.Racing && Phase != RacePhase.Finishing || racer.FinishTick.HasValue)
+            if (Phase != RacePhase.Racing && Phase != RacePhase.Finishing || racer.FinishTick.HasValue || !racer.Connected)
             {
                 return CrossingOutcome.NotRacing;
             }
@@ -255,17 +309,32 @@ namespace VoxelRush.Core.Race
             return new RaceStateMessage(RaceId, LockedTrackRevision, Phase, StartTick, ids);
         }
 
+        // Disconnected racers don't hold the race open; they finish as DNF unless they come back and finish.
         private bool AllFinished()
         {
             foreach (Racer r in _racers.Values)
             {
-                if (!r.FinishTick.HasValue)
+                if (r.Connected && !r.FinishTick.HasValue)
                 {
                     return false;
                 }
             }
 
             return true;
+        }
+
+        private int ConnectedCount()
+        {
+            int n = 0;
+            foreach (Racer r in _racers.Values)
+            {
+                if (r.Connected)
+                {
+                    n++;
+                }
+            }
+
+            return n;
         }
 
         private void EnterResults(uint tick)
@@ -317,6 +386,10 @@ namespace VoxelRush.Core.Race
             public uint? FinishTick { get; set; }
 
             public int Respawns { get; set; }
+
+            public bool Connected { get; set; } = true;
+
+            public uint DisconnectedTick { get; set; }
 
             public void Clear()
             {

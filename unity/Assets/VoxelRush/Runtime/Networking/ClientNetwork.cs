@@ -38,12 +38,15 @@ namespace VoxelRush.Networking
             }
         }
 
+        /// <summary>This process's session id; reused across reconnects so the server can resume the player's race.</summary>
+        public static Guid Session { get; } = Guid.NewGuid();
+
         public static ClientNetwork? Connect(ServerEndpoint endpoint)
         {
             string address = NetworkRuntime.ResolveIPv4(endpoint.Host);
             NetworkManager manager = NetworkRuntime.Create("ClientNetwork");
             NetworkRuntime.Transport(manager).SetConnectionData(address, endpoint.Port);
-            manager.NetworkConfig.ConnectionData = ConnectionPayload.Encode(SimulationConstants.ProtocolVersion);
+            manager.NetworkConfig.ConnectionData = ConnectionPayload.Encode(SimulationConstants.ProtocolVersion, Session);
 
             var client = new ClientNetwork(manager);
             if (manager.StartClient())
