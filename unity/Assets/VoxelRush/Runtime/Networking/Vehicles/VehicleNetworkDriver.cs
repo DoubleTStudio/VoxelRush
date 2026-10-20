@@ -279,8 +279,19 @@ namespace VoxelRush.Networking.Vehicles
             _history!.Acknowledge(acked);
             float positionError = havePrediction ? Vector3.Distance(predicted.State.Position, authoritative.Position) : float.NaN;
             float rotationError = havePrediction ? Quaternion.Angle(predicted.State.Rotation, authoritative.Rotation) : float.NaN;
-            CorrectionKind kind = acked == 0 ? CorrectionKind.Snap : _policy.Decide(positionError, rotationError);
-            _stats.Record(kind, positionError);
+            // Before the server has applied any input its state is the spawn pose: re-sync and replay everything.
+            // That's initial synchronisation, not a misprediction, so it isn't counted as a snap.
+            CorrectionKind kind;
+            if (acked == 0)
+            {
+                kind = CorrectionKind.Snap;
+                _stats.Syncs++;
+            }
+            else
+            {
+                kind = _policy.Decide(positionError, rotationError);
+                _stats.Record(kind, positionError);
+            }
             if (kind == CorrectionKind.None)
             {
                 return;
@@ -383,6 +394,7 @@ namespace VoxelRush.Networking.Vehicles
                         ("none", _stats.CorrectionsNone),
                         ("blend", _stats.CorrectionsBlend),
                         ("snap", _stats.CorrectionsSnap),
+                        ("sync", _stats.Syncs),
                         ("meanErrorM", _stats.ErrorSamples > 0 ? _stats.ErrorSum / _stats.ErrorSamples : -1),
                         ("maxErrorM", _stats.MaxError),
                         ("replayedTicks", _stats.Replayed)));
@@ -408,6 +420,7 @@ namespace VoxelRush.Networking.Vehicles
             public long CorrectionsNone;
             public long CorrectionsBlend;
             public long CorrectionsSnap;
+            public long Syncs;
             public long Replayed;
             public double RttSum;
             public long RttSamples;
