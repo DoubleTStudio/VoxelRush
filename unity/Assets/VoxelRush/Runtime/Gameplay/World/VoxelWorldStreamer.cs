@@ -90,6 +90,41 @@ namespace VoxelRush.Gameplay.World
         /// <summary>Budgeted streaming work; may run less often than physics under load.</summary>
         public void StreamStep()
         {
+            CollectObservers();
+            Streamer.Step(_observers);
+            Streamer.RefreshStaleColliders(_observers);
+            ReleaseSpawnedVehicles();
+        }
+
+        /// <summary>
+        /// Safety invariant: must run before every physics step, independent of how often streaming runs
+        /// (a guard tied to a throttled streaming step let a car cross a boundary between checks). Also rebuilds
+        /// changed colliders next to cars first (DES-012), so physics never collides with removed blocks.
+        /// </summary>
+        public void GuardStep(float deltaTime)
+        {
+            CollectObservers();
+            Streamer.RefreshCritical(_observers);
+            GuardVehicles(deltaTime);
+        }
+
+        /// <summary>Changes a loaded block (edits, destruction) and marks the affected colliders stale.</summary>
+        public bool SetBlock(BlockPos block, byte blockType)
+        {
+            ChunkCoord coord = ChunkMath.ToChunk(block);
+            ChunkData? chunk = Streamer.Get(coord);
+            LocalBlock local = ChunkMath.ToLocal(block);
+            if (chunk == null || !chunk.Set(local, blockType))
+            {
+                return false;
+            }
+
+            Streamer.MarkChanged(coord, local);
+            return true;
+        }
+
+        private void CollectObservers()
+        {
             _observers.Clear();
             foreach (ArcadeVehicle vehicle in _vehicles)
             {
@@ -102,17 +137,7 @@ namespace VoxelRush.Gameplay.World
                 Vector3 v = vehicle.Body.isKinematic ? Vector3.zero : vehicle.Body.linearVelocity;
                 _observers.Add(new StreamingObserver(p.x, p.y, p.z, v.x, v.z));
             }
-
-            Streamer.Step(_observers);
-            Streamer.RefreshStaleColliders();
-            ReleaseSpawnedVehicles();
         }
-
-        /// <summary>
-        /// Safety invariant: must run before every physics step, independent of how often streaming runs
-        /// (a guard tied to a throttled streaming step let a car cross a boundary between checks).
-        /// </summary>
-        public void GuardStep(float deltaTime) => GuardVehicles(deltaTime);
 
         void IChunkBackend.BuildCollider(ChunkData chunk, ChunkData?[] neighbours)
         {

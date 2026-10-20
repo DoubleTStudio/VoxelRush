@@ -69,5 +69,13 @@ namespace VoxelRush.World.Streaming
         public int ColliderBudget { get; set; } = 2;
 
         public int UnloadBudget { get; set; } = 8;
+
+        /// <summary>Changed chunks within this many blocks of a car (or of where it will be) are rebuilt before physics (DES-012).</summary>
+        public float CriticalDistance { get; set; } = 8f;
+
+        public float CriticalLookaheadSeconds { get; set; } = 0.5f;
+
+        /// <summary>Critical rebuilds per physics step; nearest first. Generous because each is a car-adjacent chunk.</summary>
+        public int CriticalColliderBudget { get; set; } = 8;
     }
 }
