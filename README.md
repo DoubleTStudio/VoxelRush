@@ -54,3 +54,19 @@ Platform settings are code: edit `unity/Assets/VoxelRush/Editor/ProjectConfigura
 VoxelRushServer.x86_64 -batchmode -nographics -logFile - [-port 7777] [-maxPlayers 1..8] [-smokeTestTicks N]
 ```
 Logs are logfmt (`event=server_started port=7777 ...`). Exit codes: `0` success, `2` invalid arguments.
+
+## CI (`.github/workflows/ci.yml`)
+| Job | Runs on | Trigger | Needs Unity license |
+|---|---|---|---|
+| Domain tests (.NET) | ubuntu | every PR / push | no |
+| Unity EditMode + PlayMode | ubuntu (GameCI image) | every PR / push | yes |
+| Linux dedicated server + Docker smoke | ubuntu | every PR / push | yes |
+| Android APK | ubuntu | every PR / push | yes |
+| iOS Xcode project, then unsigned compile | ubuntu, then macOS | `main` and manual only | yes |
+
+Unity jobs are **skipped with a warning** until license secrets exist (never reported green without running).
+Repository secrets (Settings > Secrets and variables > Actions), per GameCI activation docs:
+- Personal license: `UNITY_LICENSE` (license file contents), `UNITY_EMAIL`, `UNITY_PASSWORD`
+- Pro/Plus seat: `UNITY_SERIAL`, `UNITY_EMAIL`, `UNITY_PASSWORD`
+
+All third-party actions are pinned to commit SHAs. Lint locally with `docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7`.
