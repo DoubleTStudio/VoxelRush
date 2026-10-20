@@ -48,6 +48,7 @@ SMOKE_NATIVE=1 tools/smoke-server.sh build/server-mac   # same checks against th
 tools/smoke-join.sh docker  # server image + 2 Linux bots on one Docker network; server-full rejection (x86-64 hosts)
 tools/smoke-join.sh native  # same with the macOS server + bot builds
 tools/build.sh bot-mac --development && tools/smoke-drive.sh native   # 2 predicted cars at 100 ms RTT + speed hack (docker mode on x86-64)
+tools/load-test.sh native 8 40   # server + 8 driving bots; tick metrics -> artifacts/load/summary.json (baseline: docs/perf/)
 ```
 Unity must not already have the project open when running batch-mode commands.
 On Apple Silicon the Linux (amd64 Mono) server aborts under Docker's Rosetta emulation; use the `server-mac` build locally. See ADR-012.
@@ -64,6 +65,7 @@ VoxelRushServer.x86_64 -batchmode -nographics -logFile - [-port 7777] [-maxPlaye
 ```
 Logs are logfmt (`event=server_started`, `server_listening`, `client_connected players=N`, `client_rejected reason=server_full`, ...).
 Exit codes: `0` success, `2` invalid arguments, `3` could not listen.
+Every 5 s the server logs `server_tick_metrics` (tick rate, p50/p95/p99/max tick work in ms against the 33.3 ms budget, overruns, dropped ticks, players, snapshots sent); `server_tick_summary` on shutdown.
 
 Docker (UDP 7777, non-root, read-only install dir):
 ```bash

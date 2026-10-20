@@ -17,8 +17,12 @@ namespace VoxelRush.Server
         public const int ExitCodeInvalidArguments = 2;
         public const int ExitCodeStartupFailure = 3;
 
+        private const double MetricsIntervalSeconds = 5;
+
         private ServerNetwork? _network;
         private VehicleSpawner? _vehicles;
+        private NetworkSimulation? _simulation;
+        private double _nextMetricsAt;
 
         public ServerLaunchOptions? Options { get; private set; }
 
@@ -74,6 +78,8 @@ namespace VoxelRush.Server
             }
 
             _vehicles = new VehicleSpawner();
+            _simulation = NetworkSimulation.Instance;
+            _nextMetricsAt = Time.realtimeSinceStartupAsDouble + MetricsIntervalSeconds;
             _network.ClientConnected += (clientId, players) =>
             {
                 Debug.Log(LogEvent.Format("client_connected", ("clientId", clientId), ("players", players), ("maxPlayers", Options.MaxPlayers)));
@@ -100,12 +106,35 @@ namespace VoxelRush.Server
             }
 
             TicksElapsed++;
-            _network?.Tick(Time.realtimeSinceStartupAsDouble);
+            double now = Time.realtimeSinceStartupAsDouble;
+            _network?.Tick(now);
+            if (_simulation != null && now >= _nextMetricsAt)
+            {
+                _nextMetricsAt = now + MetricsIntervalSeconds;
+                LogTickMetrics(now);
+            }
             if (Options.SmokeTestTicks is int limit && TicksElapsed >= limit)
             {
                 Debug.Log(LogEvent.Format("server_smoke_test_passed", ("ticks", TicksElapsed), ("seconds", Time.realtimeSinceStartupAsDouble)));
                 Shutdown(ExitCodeSuccess, "smoke_test_complete");
             }
+        }
+
+        private void LogTickMetrics(double now)
+        {
+            TickWindow window = _simulation!.Metrics.Flush(now);
+            Debug.Log(LogEvent.Format(
+                "server_tick_metrics",
+                ("ticks", window.Ticks),
+                ("tickRate", window.TicksPerSecond),
+                ("p50Ms", window.P50),
+                ("p95Ms", window.P95),
+                ("p99Ms", window.P99),
+                ("maxMs", window.Max),
+                ("overruns", window.Overruns),
+                ("droppedTicks", _simulation.DroppedTicks),
+                ("players", _network?.PlayerCount ?? 0),
+                ("snapshotsSent", VehicleNetworkDriver.SnapshotsSent)));
         }
 
         private void OnDestroy()
@@ -116,6 +145,11 @@ namespace VoxelRush.Server
 
         private void Shutdown(int exitCode, string reason)
         {
+            if (_simulation != null)
+            {
+                Debug.Log(LogEvent.Format("server_tick_summary", ("totalTicks", _simulation.Metrics.TotalTicks), ("totalOverruns", _simulation.Metrics.TotalOverruns), ("droppedTicks", _simulation.DroppedTicks)));
+            }
+
             Debug.Log(LogEvent.Format("server_stopping", ("reason", reason), ("exitCode", exitCode)));
             enabled = false;
             _network?.Dispose();

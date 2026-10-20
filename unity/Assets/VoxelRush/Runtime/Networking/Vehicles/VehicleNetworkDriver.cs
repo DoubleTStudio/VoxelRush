@@ -52,6 +52,9 @@ namespace VoxelRush.Networking.Vehicles
             Remote,
         }
 
+        /// <summary>Server-wide count of snapshot RPCs sent (each fans out to every client).</summary>
+        public static long SnapshotsSent { get; private set; }
+
         public bool IsPredicting => _role == Role.Owner;
 
         public ArcadeVehicle Vehicle => _vehicle;
@@ -131,6 +134,7 @@ namespace VoxelRush.Networking.Vehicles
                 if (tick % SnapshotEveryTicks == 0)
                 {
                     SnapshotRpc(MakeSnapshot(tick));
+                    SnapshotsSent++;
                 }
             }
             else if (_role == Role.Owner)

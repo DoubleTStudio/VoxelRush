@@ -1,0 +1,21 @@
+{
+  "task": "VR-013",
+  "date": "2026-10-21",
+  "host": "macOS arm64 (Apple Silicon), native server + 8 dev bots on one machine",
+  "unity": "6000.3.26f1",
+  "durationSeconds": 40,
+  "bots": 8,
+  "simulatedRttMs": 100,
+  "windowsAtFullLoad": 8,
+  "ticksAtFullLoad": 1203,
+  "tickRateMin": 29.8326411207606,
+  "p50MsMax": 1.0367,
+  "p95MsMax": 1.8386,
+  "p99MsMax": 4.1295,
+  "tickMaxMs": 5.8841,
+  "overruns": 0,
+  "overrunRate": 0.0,
+  "botRttMsMean": 157.34800589318576,
+  "botMeanErrorMMax": 0.0683393152036314,
+  "botSnapsMax": 2.0
+}
