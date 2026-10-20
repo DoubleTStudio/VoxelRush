@@ -1,0 +1,2 @@
+# Skill: Free-to-Play Economy
+Read `docs/product/MONETIZATION_ECONOMY.md` and `docs/architecture/SAVE_GAME_CLOUD_PERSISTENCE.md`. Keep functional gameplay free and cosmetics optional. All grants must be server-authoritative and idempotent. Verify store receipts/transactions and revocations. Do not embed store secrets in Unity. Require privacy/age compliance review before ads or analytics. Add refund, duplicate purchase, cross-device entitlement and network-failure tests.

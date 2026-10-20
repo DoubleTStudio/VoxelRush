@@ -1,0 +1,44 @@
+# OS / IDE
+.DS_Store
+.idea/
+.vs/
+.vscode/
+*.swp
+
+# Unity (project lives in unity/)
+unity/[Ll]ibrary/
+unity/[Tt]emp/
+unity/[Oo]bj/
+unity/[Ll]ogs/
+unity/[Uu]ser[Ss]ettings/
+unity/[Bb]uild/
+unity/[Bb]uilds/
+unity/[Mm]emoryCaptures/
+unity/[Rr]ecordings/
+unity/*.csproj
+unity/*.sln
+unity/*.slnx
+unity/*.pidb
+unity/*.booproj
+unity/*.unityproj
+unity/sysinfo.txt
+unity/crashlytics-build.properties
+unity/Assets/Plugins/Editor/JetBrains*
+
+# Build and test outputs
+/build/
+/artifacts/
+TestResults/
+bin/
+obj/
+*.apk
+*.aab
+*.ipa
+
+# Secrets never belong in the repo
+*.keystore
+*.jks
+*.p12
+*.mobileprovision
+*.ulf
+.env
