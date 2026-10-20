@@ -36,7 +36,9 @@ namespace VoxelRush.Networking.World
         private readonly Dictionary<Guid, ulong> _awaitingDurable = new Dictionary<Guid, ulong>();
         private readonly List<ChunkMutationBatch> _durable = new List<ChunkMutationBatch>();
 
-        public WorldSyncServer(NetworkManager manager, WorldInfo info, string directory, Func<ulong, Vector3?> actorEye, Func<IReadOnlyList<WorldBox>> occupants)
+        /// <param name="roleOf">Server-side role of a client (its join ticket; DES-002 zones decide what each role may do).</param>
+        public WorldSyncServer(NetworkManager manager, WorldInfo info, string directory, Func<ulong, Vector3?> actorEye, Func<IReadOnlyList<WorldBox>> occupants,
+            Func<ulong, WorldRole>? roleOf = null, bool visitorsCanBuild = true)
         {
             _manager = manager;
             _info = info;
@@ -46,7 +48,8 @@ namespace VoxelRush.Networking.World
             _store = new WorldStore(directory, generator.GeneratorVersion, generator.GenerateBlocks);
             _store.RecoverJournal();
             _journal = new JournalWriter(_store.JournalPath);
-            _authority = new WorldAuthority(new EditValidator(Array.Empty<WorldBox>()), sink: _journal);
+            _authority = new WorldAuthority(new EditValidator(ZoneMap.ProtectedOnly(Array.Empty<WorldBox>(), visitorsCanBuild)), sink: _journal,
+                roleOf: roleOf == null ? null : actor => actor.StartsWith("client:", StringComparison.Ordinal) && ulong.TryParse(actor.Substring(7), out ulong id) ? roleOf(id) : WorldRole.Visitor);
             foreach (ChunkCoord coord in info.RegionChunks())
             {
                 _authority.AddChunk(_store.LoadChunk(coord));

@@ -35,6 +35,24 @@ jobs:
             artifacts/test-results/
             artifacts/crash-test/*.txt
 
+  # VR-080: API auth/security tests against real PostgreSQL and an S3-compatible store (Testcontainers).
+  api-tests:
+    name: API tests (.NET + Docker)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - run: dotnet test backend/VoxelRush.Api.Tests --logger "trx;LogFileName=api.trx" --results-directory artifacts/test-results
+      - run: tools/build-api.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: api-test-results
+          path: artifacts/test-results/
+
   # Unity jobs need license secrets; skip them visibly instead of failing or faking green.
   unity-license:
     name: Unity license available
@@ -128,6 +146,12 @@ jobs:
       # VR-062 DoD: 8-player race flow (lobby auto-start, validated gates, reconnect, identical results on every client).
       - name: Race flow test (8 racers)
         run: tools/smoke-race.sh docker
+      # VR-080: API-issued join tickets admitted by a ticket-only server; replayed/forged/missing tickets refused.
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - name: Auth flow test (API tickets + game server)
+        run: tools/build-api.sh && tools/smoke-auth.sh docker
       # VR-072 DoD: drive, world sync and race again with 2% packet loss inside Unity Transport; main/manual only.
       - name: Loss test (2% transport loss)
         if: env.BUILD_IOS == 'true'
@@ -160,6 +184,7 @@ jobs:
             artifacts/smoke-world/*.log
             artifacts/smoke-world/*.hashes
             artifacts/smoke-race/*.log
+            artifacts/smoke-auth/*.log
             artifacts/load/
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

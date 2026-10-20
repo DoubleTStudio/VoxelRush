@@ -1,0 +1,33 @@
+# VR-080 metadata API + PostgreSQL: tools/build-api.sh, export the secrets below, then
+#   docker compose -f docker/compose.backend.yaml up --build
+# Secrets come from your environment only (e.g. openssl rand -base64 32); nothing is committed.
+services:
+  db:
+    image: postgres:17.6-alpine
+    environment:
+      POSTGRES_DB: voxelrush
+      POSTGRES_PASSWORD: ${VOXELRUSH_DB_PASSWORD:?set VOXELRUSH_DB_PASSWORD}
+    volumes: [voxelrush-db:/var/lib/postgresql/data]
+    restart: unless-stopped
+  api:
+    build:
+      context: ../build/api
+      dockerfile: ../../docker/api/Dockerfile
+    image: voxelrush-api:dev
+    depends_on: [db]
+    ports:
+      - "8080:8080"
+    environment:
+      VoxelRush__ConnectionString: Host=db;Username=postgres;Password=${VOXELRUSH_DB_PASSWORD};Database=voxelrush
+      VoxelRush__JwtSigningKey: ${VOXELRUSH_JWT_KEY:?set VOXELRUSH_JWT_KEY}
+      VoxelRush__TicketKey: ${VOXELRUSH_TICKET_KEY:?set VOXELRUSH_TICKET_KEY}
+      VoxelRush__ServiceToken: ${VOXELRUSH_SERVICE_TOKEN:?set VOXELRUSH_SERVICE_TOKEN}
+      VoxelRush__GameServerEndpoint: 127.0.0.1:7777
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+
+volumes:
+  voxelrush-db:

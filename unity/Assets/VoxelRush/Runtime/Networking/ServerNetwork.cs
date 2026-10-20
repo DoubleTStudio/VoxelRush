@@ -42,7 +42,15 @@ namespace VoxelRush.Networking
         public World.WorldSyncServer CreateWorldSync(
             VoxelRush.World.Sync.WorldInfo info, string directory, Func<ulong, UnityEngine.Vector3?> actorEye,
             Func<IReadOnlyList<VoxelRush.World.Editing.WorldBox>> occupants) =>
-            new World.WorldSyncServer(_manager, info, directory, actorEye, occupants);
+            new World.WorldSyncServer(_manager, info, directory, actorEye, occupants, RoleOf, visitorsCanBuild: !_gate.RequiresTickets);
+
+        /// <summary>A connected client's world role: from its join ticket, or editor on development servers.</summary>
+        public VoxelRush.World.Editing.WorldRole RoleOf(ulong clientId) => _gate.RoleOf(clientId) switch
+        {
+            WorldAccessRole.Owner => VoxelRush.World.Editing.WorldRole.Owner,
+            WorldAccessRole.Editor => VoxelRush.World.Editing.WorldRole.Editor,
+            _ => VoxelRush.World.Editing.WorldRole.Visitor,
+        };
 
         /// <summary>Race lobby and flow on this listener.</summary>
         public Race.RaceServer CreateRace(VoxelRush.Core.Race.TrackDefinition track, Vehicles.VehicleSpawner vehicles, int? autoStart) =>
@@ -51,11 +59,12 @@ namespace VoxelRush.Networking
         /// <summary>The session id a connected client presented (VR-062); empty if unknown.</summary>
         public Guid SessionOf(ulong clientId) => _gate.SessionOf(clientId);
 
-        public static ServerNetwork? Start(ushort port, int maxPlayers)
+        /// <param name="tickets">When set, only valid join tickets are admitted (VR-080).</param>
+        public static ServerNetwork? Start(ushort port, int maxPlayers, TicketVerifier? tickets = null)
         {
             NetworkManager manager = NetworkRuntime.Create("ServerNetwork");
             NetworkRuntime.Transport(manager).SetConnectionData("0.0.0.0", port, "0.0.0.0");
-            var server = new ServerNetwork(manager, new ConnectionGate(maxPlayers, SimulationConstants.ProtocolVersion));
+            var server = new ServerNetwork(manager, new ConnectionGate(maxPlayers, SimulationConstants.ProtocolVersion, tickets: tickets));
             if (manager.StartServer())
             {
                 return server;
