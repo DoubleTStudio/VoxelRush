@@ -52,6 +52,18 @@ namespace VoxelRush.World.Sync
             return into.Count;
         }
 
+        /// <summary>A separate copy for a race's match overlay; the sandbox replica stays untouched by match deltas.</summary>
+        public ClientWorldReplica Fork()
+        {
+            var fork = new ClientWorldReplica(Info);
+            foreach (KeyValuePair<ChunkCoord, ChunkData> entry in _chunks)
+            {
+                fork._chunks[entry.Key] = entry.Value.Clone();
+            }
+
+            return fork;
+        }
+
         public bool ApplySnapshot(ChunkSnapshotMessage snapshot)
         {
             if (snapshot.GeneratorVersion != _generator.GeneratorVersion || snapshot.SchemaVersion != ChunkData.CurrentSchemaVersion)
