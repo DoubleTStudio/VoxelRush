@@ -87,6 +87,7 @@ for bot in honest cheat; do
   check "$bot bot ack latency outside 100..250 ms" "$(last "$log" vehicle_prediction_stats rttMs)" "v >= 100 && v <= 250"
   check "$bot bot received too few snapshots" "$(last "$log" vehicle_prediction_stats snapshots)" "v >= 200"
   check "$bot bot mean prediction error too large" "$(last "$log" vehicle_prediction_stats meanErrorM)" "v >= 0 && v < 0.25"
+  # Error-driven snaps only; pre-ack re-syncs are logged separately as sync.
   check "$bot bot hard-corrected too often" "$(last "$log" vehicle_prediction_stats snap)" "v <= 3"
   check "$bot bot saw too few remote snapshots" "$(last "$log" vehicle_remote_stats snapshots)" "v >= 200"
   check "$bot bot received remote snapshots out of order" "$(last "$log" vehicle_remote_stats outOfOrder)" "v == 0"
