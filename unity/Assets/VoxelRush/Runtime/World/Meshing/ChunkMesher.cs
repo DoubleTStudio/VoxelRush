@@ -6,7 +6,7 @@ namespace VoxelRush.World.Meshing
     /// <summary>
     /// Greedy mesher (VOXEL_ENGINE Meshing): culls faces hidden by opaque neighbours (reading one block past each
     /// chunk border from the face neighbours; missing neighbours count as air) and merges coplanar faces with the same
-    /// atlas tile into maximal rectangles. Engine-free output; reusable buffers, no allocation per call after warm-up.
+    /// atlas tile into maximal rectangles. Engine-free output; reusable buffers, no allocation per call after warm-up (tested).
     /// </summary>
     public sealed class ChunkMesher
     {
@@ -17,8 +17,9 @@ namespace VoxelRush.World.Meshing
         private static readonly int[] Signs = { 1, -1, 1, -1, 1, -1 };
 
         private readonly BlockAtlas _atlas;
-        private readonly byte[] _padded = new byte[(S + 2) * (S + 2) * (S + 2)];
+        private readonly byte[] _padded = new byte[PaddedSize];
         private readonly int[] _mask = new int[S * S];
+        private readonly byte[] _scratch = new byte[ChunkMath.Volume];
 
         public ChunkMesher(BlockAtlas atlas) => _atlas = atlas;
 
@@ -122,35 +123,53 @@ namespace VoxelRush.World.Meshing
 
         private byte Padded(int x, int y, int z) => _padded[(x + 1) + (S + 2) * ((z + 1) + (S + 2) * (y + 1))];
 
-        private void FillPadded(ChunkData chunk, ChunkData?[] neighbours)
+        private void FillPadded(ChunkData chunk, ChunkData?[] neighbours) => FillPadded(chunk, neighbours, _padded, _scratch);
+
+        /// <summary>Padded block volume ((S+2)^3, x fastest, then z, then y) with face-neighbour borders; shared with the Burst mesher.</summary>
+        public const int PaddedSize = (S + 2) * (S + 2) * (S + 2);
+
+        /// <summary>
+        /// Fills <paramref name="padded"/> with the chunk's blocks plus one border layer from each face neighbour
+        /// (edges/corners stay air; missing neighbours are air). <paramref name="scratch"/> is a 4096-byte buffer.
+        /// </summary>
+        public static void FillPadded(ChunkData chunk, ChunkData?[] neighbours, byte[] padded, byte[] scratch)
         {
-            Array.Clear(_padded, 0, _padded.Length);
-            for (int y = -1; y <= S; y++)
+            Array.Clear(padded, 0, padded.Length);
+            chunk.CopyEffectiveBlocks(scratch);
+            const int P = S + 2;
+            for (int y = 0; y < S; y++)
             {
-                for (int z = -1; z <= S; z++)
+                for (int z = 0; z < S; z++)
                 {
-                    for (int x = -1; x <= S; x++)
+                    // A chunk row (x = 0..15) is contiguous in both layouts.
+                    Buffer.BlockCopy(scratch, S * (z + S * y), padded, 1 + P * ((z + 1) + P * (y + 1)), S);
+                }
+            }
+
+            for (int n = 0; n < 6; n++)
+            {
+                ChunkData? source = neighbours[n];
+                if (source == null)
+                {
+                    continue;
+                }
+
+                source.CopyEffectiveBlocks(scratch);
+                for (int a = 0; a < S; a++)
+                {
+                    for (int b = 0; b < S; b++)
                     {
-                        int outside = (x < 0 || x >= S ? 1 : 0) + (y < 0 || y >= S ? 1 : 0) + (z < 0 || z >= S ? 1 : 0);
-                        // Only face neighbours matter for face culling; edges/corners stay air.
-                        if (outside > 1)
+                        // n: +X, -X, +Y, -Y, +Z, -Z; read the neighbour's touching layer into our border layer.
+                        (int px, int py, int pz, int lx, int ly, int lz) = n switch
                         {
-                            continue;
-                        }
-
-                        ChunkData? source = chunk;
-                        int lx = x, ly = y, lz = z;
-                        if (x < 0) { source = neighbours[1]; lx = S - 1; }
-                        else if (x >= S) { source = neighbours[0]; lx = 0; }
-                        else if (y < 0) { source = neighbours[3]; ly = S - 1; }
-                        else if (y >= S) { source = neighbours[2]; ly = 0; }
-                        else if (z < 0) { source = neighbours[5]; lz = S - 1; }
-                        else if (z >= S) { source = neighbours[4]; lz = 0; }
-
-                        if (source != null)
-                        {
-                            _padded[(x + 1) + (S + 2) * ((z + 1) + (S + 2) * (y + 1))] = source.Get(new LocalBlock(lx, ly, lz));
-                        }
+                            0 => (S, a, b, 0, a, b),
+                            1 => (-1, a, b, S - 1, a, b),
+                            2 => (a, S, b, a, 0, b),
+                            3 => (a, -1, b, a, S - 1, b),
+                            4 => (a, b, S, a, b, 0),
+                            _ => (a, b, -1, a, b, S - 1),
+                        };
+                        padded[(px + 1) + P * ((pz + 1) + P * (py + 1))] = scratch[lx + S * (lz + S * ly)];
                     }
                 }
             }
