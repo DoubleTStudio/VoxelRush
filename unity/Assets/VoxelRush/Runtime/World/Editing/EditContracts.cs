@@ -4,6 +4,19 @@ using VoxelRush.World.Chunks;
 
 namespace VoxelRush.World.Editing
 {
+    /// <summary>
+    /// Where accepted mutations go to become durable (PERSISTENCE_SECURITY commit protocol). The authority asks
+    /// <see cref="CanAccept"/> before applying, so a backlogged or failed store refuses edits instead of leaving a
+    /// revision that will never be journaled.
+    /// </summary>
+    public interface IMutationSink
+    {
+        bool CanAccept { get; }
+
+        /// <summary>Must succeed whenever <see cref="CanAccept"/> was true (single producer).</summary>
+        void Accept(ChunkMutationBatch batch);
+    }
+
     /// <summary>CONTRACTS EditIntent: what a client asks for. Untrusted until validated by <see cref="WorldAuthority"/>.</summary>
     public readonly struct EditIntent
     {

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Process-level crash test for the world journal (VR-032): killed with SIGKILL by tools/crash-test.sh. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <UnityAssets>$(MSBuildThisFileDirectory)../../unity/Assets/VoxelRush/</UnityAssets>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="$(UnityAssets)Runtime/Core/**/*.cs" LinkBase="Core" />
+    <Compile Include="$(UnityAssets)Runtime/World/**/*.cs" LinkBase="World" />
+    <Compile Include="Program.cs" />
+  </ItemGroup>
+
+</Project>
