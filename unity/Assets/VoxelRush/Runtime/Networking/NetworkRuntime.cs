@@ -29,6 +29,8 @@ namespace VoxelRush.Networking
             manager.NetworkConfig.ConnectionApproval = true;
             // Server and client run different scenes; the world is streamed as chunks, not NGO scene sync.
             manager.NetworkConfig.EnableSceneManagement = false;
+            // Server and clients must register the same networked prefabs.
+            manager.NetworkConfig.Prefabs.Add(new NetworkPrefab { Prefab = Vehicles.VehicleSpawner.LoadPrefab() });
             return manager;
         }
 

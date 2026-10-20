@@ -89,3 +89,43 @@ namespace VoxelRush.Tests.Domain.Hosting
         }
     }
 }
+
+namespace VoxelRush.Tests.Domain.Hosting
+{
+    public sealed class NetworkConditionOptionsTests
+    {
+        [Test]
+        public void TryParse_ReadsConditionsAmongOtherArgs()
+        {
+            Assert.That(NetworkConditionOptions.TryParse(new[] { "-batchmode", "-simRttMs", "100", "-simJitterMs", "20", "-simLossPercent", "2", "-connect", "h:1" }, out var o, out string e), Is.True, e);
+            Assert.That(o.RttMs, Is.EqualTo(100));
+            Assert.That(o.OneWaySeconds, Is.EqualTo(0.05).Within(1e-9));
+            Assert.That(o.OneWayJitterSeconds, Is.EqualTo(0.02).Within(1e-9));
+            Assert.That(o.LossPercent, Is.EqualTo(2));
+            Assert.That(o.IsActive, Is.True);
+        }
+
+        [Test]
+        public void TryParse_NoArgs_IsInactive()
+        {
+            Assert.That(NetworkConditionOptions.TryParse(Array.Empty<string>(), out var o, out _), Is.True);
+            Assert.That(o.IsActive, Is.False);
+        }
+
+        [TestCase("-simRttMs", "x")]
+        [TestCase("-simRttMs", "-5")]
+        [TestCase("-simRttMs", "5000")]
+        [TestCase("-simLossPercent", "101")]
+        public void TryParse_RejectsInvalid(string name, string value)
+        {
+            Assert.That(NetworkConditionOptions.TryParse(new[] { name, value }, out _, out string error), Is.False);
+            Assert.That(error, Is.Not.Empty);
+        }
+
+        [Test]
+        public void TryParse_RejectsJitterLargerThanHalfRtt()
+        {
+            Assert.That(NetworkConditionOptions.TryParse(new[] { "-simRttMs", "40", "-simJitterMs", "30" }, out _, out _), Is.False);
+        }
+    }
+}
