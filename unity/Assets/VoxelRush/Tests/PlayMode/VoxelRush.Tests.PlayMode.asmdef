@@ -4,6 +4,7 @@
     "references": [
         "VoxelRush.Core",
         "VoxelRush.World",
+        "VoxelRush.Destruction",
         "VoxelRush.Gameplay",
         "VoxelRush.Presentation",
         "Unity.RenderPipelines.Universal.Runtime",
