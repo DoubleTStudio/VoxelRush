@@ -1,0 +1,16 @@
+# Local dedicated server: tools/build.sh server && docker compose -f docker/compose.yaml up --build
+services:
+  server:
+    build:
+      context: ../build/server
+      dockerfile: ../../docker/server/Dockerfile
+    image: voxelrush-server:dev
+    init: true
+    ports:
+      - "7777:7777/udp"
+    command: ["-port", "7777", "-maxPlayers", "8"]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped

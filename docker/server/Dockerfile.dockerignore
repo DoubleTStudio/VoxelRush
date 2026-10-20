@@ -1,0 +1,3 @@
+# Debug symbols are not shipped.
+*_DoNotShip
+*_BurstDebugInformation_DoNotShip

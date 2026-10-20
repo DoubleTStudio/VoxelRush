@@ -108,6 +108,12 @@ jobs:
       - name: Server smoke test
         run: tools/smoke-server.sh build/server
 
+      # VR-002 DoD: server image + two headless Linux clients join; with -maxPlayers 1 the second is refused.
+      - name: Build Linux headless client
+        run: tools/build.sh client-linux
+      - name: Join test (Docker server image + 2 clients)
+        run: tools/smoke-join.sh docker
+
       - name: Build Android APK
         run: tools/build.sh android
 
@@ -126,6 +132,7 @@ jobs:
           path: |
             artifacts/test-results/
             artifacts/build-logs/
+            artifacts/smoke-join/
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: server-linux64

@@ -44,6 +44,13 @@ namespace VoxelRush.Editor
         public static void BuildMacServer() =>
             Build(BuildTarget.StandaloneOSX, StandaloneBuildSubtarget.Server, ServerScene, "Builds/ServerMac");
 
+        // Desktop client players run headless (-batchmode -nographics -connect) as join-test bots; not shipped.
+        public static void BuildLinuxClient() =>
+            Build(BuildTarget.StandaloneLinux64, StandaloneBuildSubtarget.Player, ClientScene, "Builds/ClientLinux/VoxelRushClient.x86_64");
+
+        public static void BuildMacClient() =>
+            Build(BuildTarget.StandaloneOSX, StandaloneBuildSubtarget.Player, ClientScene, "Builds/ClientMac/VoxelRushClient.app");
+
         [MenuItem("VoxelRush/Build/Android (APK)")]
         private static void BuildAndroidMenu() => BuildAndroid();
 
@@ -73,6 +80,18 @@ namespace VoxelRush.Editor
                 Directory.CreateDirectory(directory);
             }
 
+            // Scenes serialize against the editor's compiled scripts, whose defines (UNITY_SERVER) follow the
+            // active target/subtarget; a mismatch ships players with missing scripts, so refuse to build.
+            if (!EditorMatches(target, subtarget))
+            {
+                EditorUserBuildSettings.standaloneBuildSubtarget = subtarget;
+                EditorUserBuildSettings.SwitchActiveBuildTarget(BuildPipeline.GetBuildTargetGroup(target), target);
+                Debug.LogError($"Editor was not on {target}/{subtarget}; switched it. Batch mode: start Unity with " +
+                    "-buildTarget and -standaloneBuildSubtarget (tools/build.sh does). Interactive: rerun the build after recompilation.");
+                ExitIfBatchMode(1);
+                return;
+            }
+
             var options = new BuildPlayerOptions
             {
                 scenes = new[] { scene },
@@ -89,6 +108,11 @@ namespace VoxelRush.Editor
 
             ExitIfBatchMode(summary.result == BuildResult.Succeeded ? 0 : 1);
         }
+
+        private static bool EditorMatches(BuildTarget target, StandaloneBuildSubtarget subtarget) =>
+            EditorUserBuildSettings.activeBuildTarget == target
+            && (BuildPipeline.GetBuildTargetGroup(target) != BuildTargetGroup.Standalone
+                || EditorUserBuildSettings.standaloneBuildSubtarget == subtarget);
 
         private static string? GetArgumentValue(string[] args, string name)
         {

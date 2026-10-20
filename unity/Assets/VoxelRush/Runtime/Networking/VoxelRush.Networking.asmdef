@@ -1,7 +1,11 @@
 {
     "name": "VoxelRush.Networking",
     "rootNamespace": "VoxelRush.Networking",
-    "references": ["VoxelRush.Core"],
+    "references": [
+        "VoxelRush.Core",
+        "Unity.Netcode.Runtime",
+        "Unity.Networking.Transport"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
