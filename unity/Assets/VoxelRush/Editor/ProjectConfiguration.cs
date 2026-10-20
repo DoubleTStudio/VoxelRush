@@ -19,6 +19,9 @@ namespace VoxelRush.Editor
         // PlayerSettings.activeInputHandler: 0 = legacy, 1 = Input System package, 2 = both.
         private const int InputSystemOnly = 1;
 
+        // Actions are defined in code (DrivingControls); a project-wide actions asset must not be configured.
+        private const string ProjectWideActionsKey = "com.unity.input.settings.actions";
+
         private static readonly NamedBuildTarget[] MobileTargets = { NamedBuildTarget.Android, NamedBuildTarget.iOS };
 
         // Client first: index 0 is what mobile players boot into.
@@ -63,6 +66,8 @@ namespace VoxelRush.Editor
             }
 
             EditorBuildSettings.scenes = scenes;
+
+            EditorBuildSettings.RemoveConfigObject(ProjectWideActionsKey);
 
             SerializedObject playerSettings = GetPlayerSettingsObject();
             playerSettings.FindProperty("activeInputHandler").intValue = InputSystemOnly;
@@ -109,6 +114,12 @@ namespace VoxelRush.Editor
                 Expect(issues, $"EditorBuildSettings.scenes[{i}].enabled", buildScenes[i].enabled, true);
             }
 
+            if (EditorBuildSettings.TryGetConfigObject(ProjectWideActionsKey, out UnityEngine.Object _)
+                || ConfigKeyIsSerialized(ProjectWideActionsKey))
+            {
+                issues.Add($"EditorBuildSettings has a '{ProjectWideActionsKey}' config object; input actions are defined in code.");
+            }
+
             if (!(GraphicsSettings.defaultRenderPipeline is UniversalRenderPipelineAsset))
             {
                 issues.Add("GraphicsSettings.defaultRenderPipeline is not a UniversalRenderPipelineAsset.");
@@ -124,6 +135,13 @@ namespace VoxelRush.Editor
             }
 
             return issues;
+        }
+
+        // TryGetConfigObject returns false for a key whose asset was deleted, so also check the serialized map.
+        private static bool ConfigKeyIsSerialized(string key)
+        {
+            string path = System.IO.Path.Combine("ProjectSettings", "EditorBuildSettings.asset");
+            return System.IO.File.Exists(path) && System.IO.File.ReadAllText(path).Contains(key + ":");
         }
 
         private static SerializedObject GetPlayerSettingsObject() =>

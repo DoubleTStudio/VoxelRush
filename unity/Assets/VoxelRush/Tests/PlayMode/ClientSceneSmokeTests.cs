@@ -13,6 +13,9 @@ namespace VoxelRush.Tests.PlayMode
         private const string ClientSceneName = "Client";
         private const int MaxFramesToWait = 120;
 
+        [UnityTearDown]
+        public IEnumerator UnloadScenes() => TestScenes.UnloadAll();
+
         [UnityTest]
         public IEnumerator ClientScene_BootsWithUrpAndReportsReady()
         {
