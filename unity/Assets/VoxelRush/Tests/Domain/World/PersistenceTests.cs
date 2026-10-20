@@ -261,6 +261,8 @@ namespace VoxelRush.Tests.Domain.World
 
             public bool CanAccept => !Full;
 
+            public bool CanAcceptMany(int count) => !Full;
+
             public void Accept(ChunkMutationBatch batch) => Accepted.Add(batch);
         }
 

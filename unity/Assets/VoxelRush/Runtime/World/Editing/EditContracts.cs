@@ -13,6 +13,9 @@ namespace VoxelRush.World.Editing
     {
         bool CanAccept { get; }
 
+        /// <summary>Room for <paramref name="count"/> more batches (multi-chunk server operations).</summary>
+        bool CanAcceptMany(int count);
+
         /// <summary>Must succeed whenever <see cref="CanAccept"/> was true (single producer).</summary>
         void Accept(ChunkMutationBatch batch);
     }
@@ -75,6 +78,39 @@ namespace VoxelRush.World.Editing
         public uint ServerTick { get; }
 
         public IReadOnlyList<BlockChange> Changes { get; }
+    }
+
+    /// <summary>Requested changes to one chunk within a server-originated operation.</summary>
+    public readonly struct ChunkChanges
+    {
+        public ChunkChanges(ChunkCoord chunk, IReadOnlyList<BlockChange> changes)
+        {
+            Chunk = chunk;
+            Changes = changes;
+        }
+
+        public ChunkCoord Chunk { get; }
+
+        public IReadOnlyList<BlockChange> Changes { get; }
+    }
+
+    public readonly struct ServerCommitResult
+    {
+        public ServerCommitResult(EditRejection rejection, IReadOnlyList<ChunkMutationBatch> batches, bool duplicate)
+        {
+            Rejection = rejection;
+            Batches = batches;
+            IsDuplicate = duplicate;
+        }
+
+        public EditRejection Rejection { get; }
+
+        public bool Accepted => Rejection == EditRejection.None;
+
+        /// <summary>One batch per chunk that actually changed, all with the operation's id.</summary>
+        public IReadOnlyList<ChunkMutationBatch> Batches { get; }
+
+        public bool IsDuplicate { get; }
     }
 
     public readonly struct BlockChange

@@ -56,7 +56,8 @@ namespace VoxelRush.Destruction
         /// Applies integer damage. At HP ≤ 0 the block becomes air (revision advances via <see cref="ChunkData.Set"/>)
         /// and its HP entry is dropped. Negative or zero damage is ignored (no healing through this path).
         /// </summary>
-        public DamageResult Apply(ChunkData chunk, LocalBlock local, int damage)
+        /// <param name="removeOnDestroy">False when the caller commits the removal itself (through the authority, so it's journaled).</param>
+        public DamageResult Apply(ChunkData chunk, LocalBlock local, int damage, bool removeOnDestroy = true)
         {
             byte id = chunk.Get(local);
             if (damage <= 0 || id == BlockIds.Air || !_materials.TryGet(id, out BlockMaterial material) || material.IsIndestructible)
@@ -70,7 +71,11 @@ namespace VoxelRush.Destruction
             if (remaining <= 0)
             {
                 _hp.Remove(index);
-                chunk.Set(local, BlockIds.Air);
+                if (removeOnDestroy)
+                {
+                    chunk.Set(local, BlockIds.Air);
+                }
+
                 return new DamageResult(DamageOutcome.Destroyed, 0);
             }
 
