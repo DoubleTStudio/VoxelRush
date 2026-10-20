@@ -13,9 +13,6 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  UNITY_PROJECT: unity
-
 jobs:
   domain-tests:
     name: Domain tests (.NET)
@@ -42,90 +39,31 @@ jobs:
     steps:
       - id: check
         env:
-          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
-          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         run: |
-          if [[ -n "$UNITY_LICENSE" || -n "$UNITY_SERIAL" ]]; then
+          if [[ -n "$UNITY_EMAIL" && -n "$UNITY_PASSWORD" ]]; then
             echo "available=true" >> "$GITHUB_OUTPUT"
           else
             echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::UNITY_LICENSE/UNITY_SERIAL not configured; Unity test and build jobs are skipped."
+            echo "::warning::UNITY_EMAIL/UNITY_PASSWORD not configured; Unity test and build jobs are skipped."
           fi
 
-  unity-tests:
-    name: Unity EditMode + PlayMode
+  # One job so a run holds a single Personal license activation; the lock serialises runs across PRs.
+  unity:
+    name: Unity tests + builds
     needs: [domain-tests, unity-license]
     if: needs.unity-license.outputs.available == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 150
+    concurrency:
+      group: unity-personal-license
+      cancel-in-progress: false
+    env:
+      UNITY_TEST_BUILD_TARGET: ""
+      BUILD_IOS: ${{ github.event_name != 'pull_request' }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          lfs: true
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: unity/Library
-          key: library-tests-${{ hashFiles('unity/Packages/packages-lock.json', 'unity/ProjectSettings/ProjectVersion.txt') }}
-          restore-keys: library-tests-
-      - uses: game-ci/unity-test-runner@fa6ced25861c16ef56187828c43f76d00df43a23 # v4.3.2
-        env:
-          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
-          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
-          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
-        with:
-          projectPath: ${{ env.UNITY_PROJECT }}
-          testMode: all
-          artifactsPath: artifacts/test-results
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always()
-        with:
-          name: unity-test-results
-          path: artifacts/test-results/
-
-  build-server:
-    name: Linux dedicated server + smoke
-    needs: unity-tests
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          lfs: true
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: unity/Library
-          key: library-server-${{ hashFiles('unity/Packages/packages-lock.json', 'unity/ProjectSettings/ProjectVersion.txt') }}
-          restore-keys: library-server-
-      - uses: game-ci/unity-builder@4423ee75828dff56037d1d1cfdac6b68e3a6ba00 # v4.8.2
-        env:
-          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
-          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
-          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
-        with:
-          projectPath: ${{ env.UNITY_PROJECT }}
-          targetPlatform: StandaloneLinux64
-          buildMethod: VoxelRush.Editor.BuildEntryPoints.BuildLinuxServer
-          customParameters: -buildOutput Builds/Server/VoxelRushServer.x86_64
-          manualExit: true
-      # Native x86-64 here, so this also covers the Mono runtime that cannot run under Rosetta locally.
-      - run: tools/smoke-server.sh unity/Builds/Server
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: server-linux64
-          path: |
-            unity/Builds/Server/
-            !unity/Builds/Server/*_DoNotShip/
-          retention-days: 7
-
-  build-android:
-    name: Android APK
-    needs: unity-tests
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    steps:
-      # Android editor image plus Gradle cache exceed the default runner disk.
+      # Editor, Android SDK/NDK and Library exceed the default runner disk.
       - uses: jlumbroso/free-disk-space@ceedf095f4ec1a097402bc6bd80831f2e1a6fde6 # v2.0.0
         with:
           tool-cache: false
@@ -136,68 +74,74 @@ jobs:
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: unity/Library
-          key: library-android-${{ hashFiles('unity/Packages/packages-lock.json', 'unity/ProjectSettings/ProjectVersion.txt') }}
-          restore-keys: library-android-
-      - uses: game-ci/unity-builder@4423ee75828dff56037d1d1cfdac6b68e3a6ba00 # v4.8.2
-        env:
-          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
-          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
-          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
+          key: library-${{ runner.os }}-${{ hashFiles('unity/Packages/packages-lock.json', 'unity/ProjectSettings/ProjectVersion.txt') }}
+          restore-keys: library-${{ runner.os }}-
+      - id: unity-setup
+        uses: RageAgainstThePixel/unity-setup@3da1aae07f5635ff478d3ad7f29782b3aea88258 # v2.6.0
         with:
-          projectPath: ${{ env.UNITY_PROJECT }}
-          targetPlatform: Android
-          buildMethod: VoxelRush.Editor.BuildEntryPoints.BuildAndroid
-          customParameters: -buildOutput Builds/Android/VoxelRush.apk
-          manualExit: true
+          version-file: unity/ProjectSettings/ProjectVersion.txt
+          build-targets: ${{ env.BUILD_IOS == 'true' && 'StandaloneLinux64, Android, iOS' || 'StandaloneLinux64, Android' }}
+          modules: linux-server
+      # Post step returns the seat, so Personal activations are not leaked between runs.
+      - uses: RageAgainstThePixel/activate-unity-license@e73ff1f81db81a2595f86642123ce2b73b9a9258 # v2.2.2
+        with:
+          license: personal
+          username: ${{ secrets.UNITY_EMAIL }}
+          password: ${{ secrets.UNITY_PASSWORD }}
+
+      - name: EditMode tests
+        run: tools/test.sh editmode
+      - name: PlayMode tests
+        run: tools/test.sh playmode
+
+      - name: Build Linux dedicated server
+        run: tools/build.sh server
+      # Native x86-64 here, so this also covers the Mono runtime that cannot run under Rosetta locally.
+      - name: Server smoke test
+        run: tools/smoke-server.sh build/server
+
+      - name: Build Android APK
+        run: tools/build.sh android
+
+      - name: Build iOS Xcode project
+        if: env.BUILD_IOS == 'true'
+        run: tools/build.sh ios
+      # Tar keeps executable bits and symlinks that artifact upload would drop.
+      - name: Package iOS Xcode project
+        if: env.BUILD_IOS == 'true'
+        run: tar -C build/ios -czf ios-xcode.tgz Xcode
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: unity-test-results-and-logs
+          path: |
+            artifacts/test-results/
+            artifacts/build-logs/
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: server-linux64
+          path: |
+            build/server/
+            !build/server/*_DoNotShip/
+          retention-days: 7
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: android-apk
-          path: unity/Builds/Android/VoxelRush.apk
+          path: build/android/VoxelRush.apk
           retention-days: 7
-
-  # iOS runs on main/manual only: the Xcode project is ~1 GB and macOS minutes are expensive.
-  build-ios-project:
-    name: iOS Xcode project
-    needs: unity-tests
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    steps:
-      - uses: jlumbroso/free-disk-space@ceedf095f4ec1a097402bc6bd80831f2e1a6fde6 # v2.0.0
-        with:
-          tool-cache: false
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          lfs: true
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: unity/Library
-          key: library-ios-${{ hashFiles('unity/Packages/packages-lock.json', 'unity/ProjectSettings/ProjectVersion.txt') }}
-          restore-keys: library-ios-
-      - uses: game-ci/unity-builder@4423ee75828dff56037d1d1cfdac6b68e3a6ba00 # v4.8.2
-        env:
-          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
-          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
-          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
-        with:
-          projectPath: ${{ env.UNITY_PROJECT }}
-          targetPlatform: iOS
-          buildMethod: VoxelRush.Editor.BuildEntryPoints.BuildIos
-          customParameters: -buildOutput Builds/iOS/Xcode
-          manualExit: true
-      # Tar keeps executable bits and symlinks that artifact upload would drop.
-      - run: tar -C unity/Builds/iOS -czf ios-xcode.tgz Xcode
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: env.BUILD_IOS == 'true'
         with:
           name: ios-xcode-project
           path: ios-xcode.tgz
           retention-days: 1
 
+  # iOS runs on main/manual only: the Xcode project is ~1 GB and macOS minutes are expensive.
   compile-ios:
     name: iOS compile (unsigned)
-    needs: build-ios-project
+    needs: unity
+    if: github.event_name != 'pull_request'
     runs-on: macos-15
     timeout-minutes: 60
     steps:

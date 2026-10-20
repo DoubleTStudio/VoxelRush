@@ -56,17 +56,15 @@ VoxelRushServer.x86_64 -batchmode -nographics -logFile - [-port 7777] [-maxPlaye
 Logs are logfmt (`event=server_started port=7777 ...`). Exit codes: `0` success, `2` invalid arguments.
 
 ## CI (`.github/workflows/ci.yml`)
-| Job | Runs on | Trigger | Needs Unity license |
+| Job | Runs on | Trigger | Needs Unity secrets |
 |---|---|---|---|
 | Domain tests (.NET) | ubuntu | every PR / push | no |
-| Unity EditMode + PlayMode | ubuntu (GameCI image) | every PR / push | yes |
-| Linux dedicated server + Docker smoke | ubuntu | every PR / push | yes |
-| Android APK | ubuntu | every PR / push | yes |
-| iOS Xcode project, then unsigned compile | ubuntu, then macOS | `main` and manual only | yes |
+| Unity tests + builds: EditMode, PlayMode, Linux server + smoke, Android APK, iOS Xcode project (iOS on `main`/manual) | ubuntu | every PR / push | yes |
+| iOS compile (unsigned) | macOS | `main` / manual | (uses the Xcode project artifact) |
 
-Unity jobs are **skipped with a warning** until license secrets exist (never reported green without running).
-Repository secrets (Settings > Secrets and variables > Actions), per GameCI activation docs:
-- Personal license: `UNITY_LICENSE` (license file contents), `UNITY_EMAIL`, `UNITY_PASSWORD`
-- Pro/Plus seat: `UNITY_SERIAL`, `UNITY_EMAIL`, `UNITY_PASSWORD`
+The Unity job installs the pinned editor on the runner (`RageAgainstThePixel/unity-setup`), activates a free **Unity Personal** license (`RageAgainstThePixel/activate-unity-license`), runs the same `tools/*.sh` scripts as local development, and returns the seat afterwards.
+It is one job under a repo-wide concurrency lock, so only one Personal activation is in use at a time.
+It is **skipped with a warning** until these repository secrets exist (Settings > Secrets and variables > Actions):
+- `UNITY_EMAIL`, `UNITY_PASSWORD`: a Unity ID with a Personal license and **2FA disabled** (a dedicated CI account is recommended).
 
-All third-party actions are pinned to commit SHAs. Lint locally with `docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7`.
+All third-party actions are pinned to commit SHAs. Lint locally with `docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -no-color`.
