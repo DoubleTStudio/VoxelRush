@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # VR-033 DoD: late-join chunk hashes match, and persist across a server restart (VR-032 journal recovery).
 # Phase 1: server + two concurrent builder bots A1/A2 (30 durable edits each, adjacent rows crossing a chunk border)
+#          + tower bot T (stacks 5 blocks, cuts the base; DES-011: the server collapses the other 4)
 #          + late-joining bot B. Phase 2: restart server on the same world dir, bot C joins.
 # Usage: tools/smoke-world.sh native|docker
 set -euo pipefail
@@ -65,16 +66,21 @@ echo "== phase 1: builder edits, late joiner syncs"
 start_server "$LOGS/server1.log" 1500
 start_bot "$LOGS/botA.log" -botBuild "$EDITS" -smokeTestSeconds 25; A=$BOT_PID
 start_bot "$LOGS/botA2.log" -botBuild "$EDITS" -smokeTestSeconds 25; A2=$BOT_PID
+start_bot "$LOGS/botT.log" -botTower 5 -smokeTestSeconds 25; T=$BOT_PID
 for log in botA botA2; do
   for _ in $(seq 1 120); do grep -q "event=bot_build_done" "$LOGS/$log.log" 2>/dev/null && break; sleep 0.5; done
   grep -q "event=bot_build_done edits=$EDITS" "$LOGS/$log.log" || fail "$log did not finish $EDITS edits"
 done
+for _ in $(seq 1 60); do grep -q "event=bot_tower_done" "$LOGS/botT.log" 2>/dev/null && break; sleep 0.5; done
+grep -q "event=bot_tower_done edits=6 accepted=6" "$LOGS/botT.log" || fail "tower bot did not build and cut its tower"
 start_bot "$LOGS/botB.log" -smokeTestSeconds 8; B=$BOT_PID
-expect_exit "$A" "bot A"; expect_exit "$A2" "bot A2"; expect_exit "$B" "bot B"; expect_exit "$SERVER_PID" "server (phase 1)"
+expect_exit "$A" "bot A"; expect_exit "$A2" "bot A2"; expect_exit "$T" "bot T"; expect_exit "$B" "bot B"; expect_exit "$SERVER_PID" "server (phase 1)"
+grep -q "event=world_closed .*collapsedBlocks=4 " "$LOGS/server1.log" || fail "server did not collapse the 4 unsupported tower blocks"
 
 hashes "$LOGS/server1.log" world_chunk_hash >"$LOGS/server1.hashes"
 hashes "$LOGS/botA.log" world_replica_hash >"$LOGS/botA.hashes"
 hashes "$LOGS/botA2.log" world_replica_hash >"$LOGS/botA2.hashes"
+hashes "$LOGS/botT.log" world_replica_hash >"$LOGS/botT.hashes"
 hashes "$LOGS/botB.log" world_replica_hash >"$LOGS/botB.hashes"
 [[ $(wc -l <"$LOGS/server1.hashes") -ge 2 ]] || fail "expected edits in at least 2 chunks"
 accepted=0
@@ -86,11 +92,13 @@ done
 diff -u "$LOGS/server1.hashes" "$LOGS/botB.hashes" || fail "late joiner's chunk hashes differ from the server's"
 diff -u "$LOGS/server1.hashes" "$LOGS/botA.hashes" || fail "builder A's replica (deltas) differs from the server's"
 diff -u "$LOGS/server1.hashes" "$LOGS/botA2.hashes" || fail "builder A2's replica (deltas) differs from the server's"
-echo "edited chunks: $(wc -l <"$LOGS/server1.hashes" | tr -d ' '); accepted edits: $accepted; late joiner hashes match"
+diff -u "$LOGS/server1.hashes" "$LOGS/botT.hashes" || fail "tower bot's replica (incl. collapse deltas) differs from the server's"
+durable=$(sed -nE 's/.*event=world_closed .*durable=([0-9]+).*/\1/p' "$LOGS/server1.log")
+echo "edited chunks: $(wc -l <"$LOGS/server1.hashes" | tr -d ' '); accepted row edits: $accepted; durable records: $durable; tower collapsed; late joiner hashes match"
 
 echo "== phase 2: restart on the same world dir, new client joins"
 start_server "$LOGS/server2.log" 450
-grep -q "event=world_recovered .*records=$accepted " "$LOGS/server2.log" || fail "restart did not recover $accepted journal records"
+grep -q "event=world_recovered .*records=$durable " "$LOGS/server2.log" || fail "restart did not recover $durable journal records"
 start_bot "$LOGS/botC.log" -smokeTestSeconds 6; C=$BOT_PID
 expect_exit "$C" "bot C"; expect_exit "$SERVER_PID" "server (phase 2)"
 hashes "$LOGS/botC.log" world_replica_hash >"$LOGS/botC.hashes"

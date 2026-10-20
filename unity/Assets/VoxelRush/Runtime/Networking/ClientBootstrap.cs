@@ -54,7 +54,8 @@ namespace VoxelRush.Networking
             }
 
             _smokeTestSeconds = result.Options!.SmokeTestSeconds;
-            if (Array.IndexOf(Environment.GetCommandLineArgs(), BotBuilder.BuildArgument) >= 0)
+            string[] botArgs = Environment.GetCommandLineArgs();
+            if (Array.IndexOf(botArgs, BotBuilder.BuildArgument) >= 0 || Array.IndexOf(botArgs, BotBuilder.TowerArgument) >= 0)
             {
                 gameObject.AddComponent<BotBuilder>();
             }

@@ -4,6 +4,7 @@ using System.IO;
 using Unity.Netcode;
 using UnityEngine;
 using VoxelRush.Core.Diagnostics;
+using VoxelRush.Destruction;
 using VoxelRush.World.Chunks;
 using VoxelRush.World.Editing;
 using VoxelRush.World.Generation;
@@ -26,6 +27,7 @@ namespace VoxelRush.Networking.World
         private readonly WorldStore _store;
         private readonly JournalWriter _journal;
         private readonly WorldAuthority _authority;
+        private readonly CollapseScheduler _collapse;
         private readonly Func<ulong, Vector3?> _actorEye;
         private readonly Func<IReadOnlyList<WorldBox>> _occupants;
         private readonly Queue<(ulong ClientId, EditIntent Intent)> _edits = new Queue<(ulong, EditIntent)>();
@@ -51,6 +53,8 @@ namespace VoxelRush.Networking.World
             }
 
             _authority.RememberRecovered(_store.RecoveredRecords);
+            _collapse = new CollapseScheduler(_authority, new AuthorityStructureView(_authority));
+            _authority.IsBlocked = _collapse.IsBlocked;
             foreach (string problem in _store.Problems)
             {
                 Debug.LogError(LogEvent.Format("world_recovery_problem", ("problem", problem)));
@@ -99,7 +103,19 @@ namespace VoxelRush.Networking.World
                     continue;
                 }
 
+                if (intent.Action == EditAction.Remove && _collapse.IsSaturated)
+                {
+                    // Structural analysis is behind: refuse new removals rather than queue unbounded work.
+                    SendResult(clientId, intent.OperationId, EditRejection.ServerBusy, 0);
+                    continue;
+                }
+
                 EditResult result = _authority.Submit($"client:{clientId}", intent, eye.Value.x, eye.Value.y, eye.Value.z, _occupants(), serverTick, now);
+                if (result.Accepted && !result.IsDuplicate && intent.Action == EditAction.Remove)
+                {
+                    _collapse.Enqueue(ChunkMath.ToWorld(intent.Chunk, LocalBlock.FromIndex(intent.LocalIndex)));
+                }
+
                 if (!result.Accepted)
                 {
                     SendResult(clientId, intent.OperationId, result.Rejection, 0);
@@ -113,6 +129,14 @@ namespace VoxelRush.Networking.World
                 {
                     _awaitingDurable[intent.OperationId] = clientId;
                 }
+            }
+
+            long collapsedBefore = _collapse.BlocksRemoved;
+            CollapseTickStats collapse = _collapse.Tick(serverTick);
+            if (collapse.Removed > 0)
+            {
+                Debug.Log(LogEvent.Format("world_collapse", ("removed", collapse.Removed), ("totalRemoved", collapsedBefore + collapse.Removed),
+                    ("checks", collapse.Checks), ("activeJobs", collapse.ActiveJobs), ("pending", collapse.Pending)));
             }
 
             if (_journal.DrainDurable(_durable) > 0)
@@ -150,7 +174,8 @@ namespace VoxelRush.Networking.World
                 }
             }
 
-            Debug.Log(LogEvent.Format("world_closed", ("accepted", _authority.Accepted), ("rejected", _authority.Rejected), ("durable", _journal.DurableCount)));
+            Debug.Log(LogEvent.Format("world_closed", ("accepted", _authority.Accepted), ("rejected", _authority.Rejected), ("durable", _journal.DurableCount),
+                ("collapses", _collapse.Collapses), ("collapsedBlocks", _collapse.BlocksRemoved), ("collapseAbandoned", _collapse.Abandoned)));
         }
 
         public static string DefaultDirectory() =>
