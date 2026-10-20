@@ -63,6 +63,9 @@ namespace VoxelRush.Networking.Vehicles
         {
             _vehicle = GetComponent<ArcadeVehicle>();
             _vehicle.AutoSimulate = false;
+            // The object is instantiated at the prefab origin and then moved by NGO; with autoSyncTransforms off the
+            // Rigidbody would still be at the origin and the first Physics.Simulate would teleport the car there.
+            _vehicle.ResetTo(transform.position, transform.rotation);
             _nextStatsAt = Time.realtimeSinceStartupAsDouble + StatsIntervalSeconds;
 
             if (IsServer)
