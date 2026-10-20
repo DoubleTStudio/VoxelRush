@@ -5,6 +5,7 @@ using VoxelRush.Core.Diagnostics;
 using VoxelRush.Core.Hosting;
 using VoxelRush.Core.Networking;
 using VoxelRush.Networking;
+using VoxelRush.Networking.Race;
 using VoxelRush.Networking.Vehicles;
 using VoxelRush.Networking.World;
 using VoxelRush.World.Chunks;
@@ -27,6 +28,7 @@ namespace VoxelRush.Server
         private VehicleSpawner? _vehicles;
         private NetworkSimulation? _simulation;
         private WorldSyncServer? _world;
+        private RaceServer? _race;
 
         // First networked slice: a flat build plot around the spawn row (world x −48..47, z −80..−17, y −32..15).
         private static readonly WorldInfo PlotWorld = new WorldInfo(
@@ -37,6 +39,8 @@ namespace VoxelRush.Server
         public ServerLaunchOptions? Options { get; private set; }
 
         public long TicksElapsed { get; private set; }
+
+        private uint CurrentTick => _simulation != null ? _simulation.Tick : (uint)TicksElapsed;
 
         private void Awake()
         {
@@ -90,12 +94,14 @@ namespace VoxelRush.Server
             _vehicles = new VehicleSpawner();
             string worldDir = Options.WorldDir ?? WorldSyncServer.DefaultDirectory();
             _world = _network.CreateWorldSync(PlotWorld, worldDir, _vehicles.EyeOf, _vehicles.Occupants);
+            _race = _network.CreateRace(ArenaTrack.Create(), _vehicles, Options.RaceAutoStart);
             _simulation = NetworkSimulation.Instance;
             _nextMetricsAt = Time.realtimeSinceStartupAsDouble + MetricsIntervalSeconds;
             _network.ClientConnected += (clientId, players) =>
             {
                 Debug.Log(LogEvent.Format("client_connected", ("clientId", clientId), ("players", players), ("maxPlayers", Options.MaxPlayers)));
-                _vehicles.Spawn(clientId);
+                var pose = _race.OnClientConnected(clientId, _network.SessionOf(clientId), CurrentTick);
+                _vehicles.Spawn(clientId, pose);
                 _world.OnClientConnected(clientId);
             };
             _network.ClientDisconnected += (clientId, players) =>
@@ -103,6 +109,7 @@ namespace VoxelRush.Server
                 Debug.Log(LogEvent.Format("client_disconnected", ("clientId", clientId), ("players", players)));
                 _vehicles.Despawn(clientId);
                 _world.OnClientDisconnected(clientId);
+                _race.OnClientDisconnected(clientId, CurrentTick);
             };
             _network.ClientRejected += (clientId, rejection) =>
                 Debug.LogWarning(LogEvent.Format("client_rejected", ("clientId", clientId), ("reason", rejection.ToReasonCode())));
@@ -122,7 +129,8 @@ namespace VoxelRush.Server
             TicksElapsed++;
             double now = Time.realtimeSinceStartupAsDouble;
             _network?.Tick(now);
-            _world?.Tick(_simulation != null ? _simulation.Tick : (uint)TicksElapsed, now);
+            _world?.Tick(CurrentTick, now);
+            _race?.Tick(CurrentTick);
             if (_simulation != null && now >= _nextMetricsAt)
             {
                 _nextMetricsAt = now + MetricsIntervalSeconds;

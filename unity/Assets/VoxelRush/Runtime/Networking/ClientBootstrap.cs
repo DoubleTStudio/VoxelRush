@@ -5,6 +5,7 @@ using UnityEngine;
 using VoxelRush.Core.Diagnostics;
 using VoxelRush.Core.Hosting;
 using VoxelRush.Networking.Bots;
+using VoxelRush.Networking.Race;
 using VoxelRush.Networking.World;
 
 namespace VoxelRush.Networking
@@ -35,8 +36,17 @@ namespace VoxelRush.Networking
         private int? _smokeTestSeconds;
         private double _startedAt;
         private double _connectedAt = -1;
+        private ServerEndpoint? _endpoint;
+        private bool _reconnecting;
 
         public bool IsConnected => _network != null && _network.IsConnected;
+
+        /// <summary>The scene's bootstrap (one per client/bot process).</summary>
+        public static ClientBootstrap? Instance { get; private set; }
+
+        public int Reconnects { get; private set; }
+
+        private void Awake() => Instance = this;
 
         private void Start()
         {
@@ -98,8 +108,45 @@ namespace VoxelRush.Networking
             _network = null;
         }
 
+        /// <summary>
+        /// Drops the connection cleanly and connects again with the same session id (VR-062 race resume). The server
+        /// frees the old slot on the clean disconnect, so the new connection isn't refused as a duplicate session.
+        /// </summary>
+        public void Reconnect()
+        {
+            if (_reconnecting || _network == null || _endpoint == null || !enabled)
+            {
+                return;
+            }
+
+            _reconnecting = true;
+            StartCoroutine(ReconnectRoutine(_endpoint.Value));
+        }
+
+        private IEnumerator ReconnectRoutine(ServerEndpoint endpoint)
+        {
+            Debug.Log(LogEvent.Format("client_reconnecting", ("endpoint", endpoint)));
+            _world = null;
+            RaceClient.Current = null;
+            _network!.BeginShutdown();
+            float deadline = Time.realtimeSinceStartup + ShutdownTimeoutSeconds;
+            while (!_network.IsShutdownComplete && Time.realtimeSinceStartup < deadline)
+            {
+                yield return null;
+            }
+
+            _network.Dispose();
+            _network = null;
+            // Give the server a moment to process the disconnect before the new handshake.
+            yield return new WaitForSecondsRealtime(0.5f);
+            Reconnects++;
+            Connect(endpoint);
+            _reconnecting = false;
+        }
+
         private void Connect(ServerEndpoint endpoint)
         {
+            _endpoint = endpoint;
             Debug.Log(LogEvent.Format("client_connecting", ("endpoint", endpoint)));
             try
             {
@@ -121,15 +168,21 @@ namespace VoxelRush.Networking
 
             _network.Connected += () =>
             {
-                _connectedAt = Time.realtimeSinceStartupAsDouble;
+                // A reconnect keeps the original smoke-test clock.
+                if (_connectedAt < 0)
+                {
+                    _connectedAt = Time.realtimeSinceStartupAsDouble;
+                }
+
                 _world = new WorldSyncClient(Unity.Netcode.NetworkManager.Singleton);
+                RaceClient.Current = new RaceClient(Unity.Netcode.NetworkManager.Singleton);
                 BotBuilder.World = _world;
                 Debug.Log(LogEvent.Format("client_connected", ("endpoint", endpoint), ("seconds", _connectedAt - _startedAt)));
             };
             _network.Disconnected += reason =>
             {
                 Debug.LogWarning(LogEvent.Format("client_disconnected", ("reason", reason.Length > 0 ? reason : "transport")));
-                if (_smokeTestSeconds.HasValue && enabled)
+                if (_smokeTestSeconds.HasValue && enabled && !_reconnecting)
                 {
                     Exit(ExitCodeConnectFailed);
                 }

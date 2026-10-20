@@ -44,6 +44,13 @@ namespace VoxelRush.Networking
             Func<IReadOnlyList<VoxelRush.World.Editing.WorldBox>> occupants) =>
             new World.WorldSyncServer(_manager, info, directory, actorEye, occupants);
 
+        /// <summary>Race lobby and flow on this listener.</summary>
+        public Race.RaceServer CreateRace(VoxelRush.Core.Race.TrackDefinition track, Vehicles.VehicleSpawner vehicles, int? autoStart) =>
+            new Race.RaceServer(_manager, track, vehicles, autoStart);
+
+        /// <summary>The session id a connected client presented (VR-062); empty if unknown.</summary>
+        public Guid SessionOf(ulong clientId) => _gate.SessionOf(clientId);
+
         public static ServerNetwork? Start(ushort port, int maxPlayers)
         {
             NetworkManager manager = NetworkRuntime.Create("ServerNetwork");

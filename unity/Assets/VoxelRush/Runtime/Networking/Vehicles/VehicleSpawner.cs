@@ -51,14 +51,23 @@ namespace VoxelRush.Networking.Vehicles
         public static GameObject LoadPrefab() =>
             Resources.Load<GameObject>(PrefabResourcePath) ?? throw new System.InvalidOperationException($"Missing Resources/{PrefabResourcePath}.");
 
-        public void Spawn(ulong clientId)
+        /// <summary>The server-simulated car of a player, if spawned.</summary>
+        public VoxelRush.Gameplay.Vehicles.ArcadeVehicle? VehicleOf(ulong clientId) =>
+            _cars.TryGetValue(clientId, out NetworkObject car) && car != null ? car.GetComponent<VoxelRush.Gameplay.Vehicles.ArcadeVehicle>() : null;
+
+        /// <summary>Grid slot <paramref name="slot"/>: the scene's spawn points in order (a row fallback without any).</summary>
+        public (Vector3 Position, Quaternion Rotation) GridPose(int slot) =>
+            slot < _spawnPoints.Count ? (_spawnPoints[slot].position, _spawnPoints[slot].rotation) : (new Vector3(slot * 6f, 1.5f, 0f), Quaternion.identity);
+
+        /// <param name="pose">Where to spawn instead of the next free spawn point (a racer resuming mid-course).</param>
+        public void Spawn(ulong clientId, (Vector3 Position, Quaternion Rotation)? pose = null)
         {
             if (_cars.ContainsKey(clientId))
             {
                 return;
             }
 
-            (Vector3 position, Quaternion rotation) = NextSpawnPose();
+            (Vector3 position, Quaternion rotation) = pose ?? NextSpawnPose();
             NetworkObject car = NetworkObject.InstantiateAndSpawn(LoadPrefab(), NetworkManager.Singleton, clientId, position: position, rotation: rotation);
             _cars[clientId] = car;
         }
