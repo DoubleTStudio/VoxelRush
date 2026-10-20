@@ -1,0 +1,14 @@
+{
+    "name": "VoxelRush.Presentation",
+    "rootNamespace": "VoxelRush.Presentation",
+    "references": ["VoxelRush.Core", "VoxelRush.World", "VoxelRush.Gameplay", "VoxelRush.Networking", "Unity.InputSystem", "Unity.RenderPipelines.Core.Runtime", "Unity.RenderPipelines.Universal.Runtime"],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": ["!UNITY_SERVER"],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

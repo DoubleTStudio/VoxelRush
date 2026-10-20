@@ -1,0 +1,14 @@
+{
+    "name": "VoxelRush.Server",
+    "rootNamespace": "VoxelRush.Server",
+    "references": ["VoxelRush.Core", "VoxelRush.World", "VoxelRush.Gameplay", "VoxelRush.Destruction", "VoxelRush.Networking"],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": ["UNITY_SERVER || UNITY_EDITOR"],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
