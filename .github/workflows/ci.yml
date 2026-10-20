@@ -128,6 +128,10 @@ jobs:
       # VR-062 DoD: 8-player race flow (lobby auto-start, validated gates, reconnect, identical results on every client).
       - name: Race flow test (8 racers)
         run: tools/smoke-race.sh docker
+      # VR-072 DoD: drive, world sync and race again with 2% packet loss inside Unity Transport; main/manual only.
+      - name: Loss test (2% transport loss)
+        if: env.BUILD_IOS == 'true'
+        run: tools/smoke-loss.sh docker 2
       # VR-013: 8-player load; main/manual only (8 bot processes on the runner).
       - name: Load test (8 bots, 30 Hz tick metrics)
         if: env.BUILD_IOS == 'true'

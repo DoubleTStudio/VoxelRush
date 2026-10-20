@@ -97,6 +97,7 @@ namespace VoxelRush.Server
             _race = _network.CreateRace(ArenaTrack.Create(), _vehicles, Options.RaceAutoStart);
             _simulation = NetworkSimulation.Instance;
             _nextMetricsAt = Time.realtimeSinceStartupAsDouble + MetricsIntervalSeconds;
+            NetworkBandwidth.Meter.Flush(Time.realtimeSinceStartupAsDouble);
             _network.ClientConnected += (clientId, players) =>
             {
                 Debug.Log(LogEvent.Format("client_connected", ("clientId", clientId), ("players", players), ("maxPlayers", Options.MaxPlayers)));
@@ -158,6 +159,9 @@ namespace VoxelRush.Server
                 ("droppedTicks", _simulation.DroppedTicks),
                 ("players", _network?.PlayerCount ?? 0),
                 ("snapshotsSent", VehicleNetworkDriver.SnapshotsSent)));
+            (int clients, double mean, double max) = NetworkBandwidth.Meter.Flush(now);
+            Debug.Log(LogEvent.Format("net_bandwidth", ("clients", clients), ("meanBytesPerSecPerClient", Math.Round(mean)), ("maxBytesPerSecPerClient", Math.Round(max)),
+                ("snapshotsSkipped", VehicleNetworkDriver.SnapshotsSkipped)));
         }
 
         private void OnDestroy()
@@ -175,6 +179,8 @@ namespace VoxelRush.Server
             if (_simulation != null)
             {
                 Debug.Log(LogEvent.Format("server_tick_summary", ("totalTicks", _simulation.Metrics.TotalTicks), ("totalOverruns", _simulation.Metrics.TotalOverruns), ("droppedTicks", _simulation.DroppedTicks)));
+                Debug.Log(LogEvent.Format("net_bandwidth_summary", ("totalBytes", NetworkBandwidth.Meter.TotalBytes),
+                    ("peakBytesPerSecPerClient", Math.Round(NetworkBandwidth.Meter.PeakClientBytesPerSecond)), ("snapshotsSkipped", VehicleNetworkDriver.SnapshotsSkipped)));
             }
 
             Debug.Log(LogEvent.Format("server_stopping", ("reason", reason), ("exitCode", exitCode)));

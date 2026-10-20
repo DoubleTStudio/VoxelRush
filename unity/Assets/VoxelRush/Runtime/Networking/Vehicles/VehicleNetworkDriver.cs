@@ -31,6 +31,10 @@ namespace VoxelRush.Networking.Vehicles
         private readonly List<InputBatch> _outboundReady = new List<InputBatch>();
         private readonly List<VehicleSnapshot> _inboundReady = new List<VehicleSnapshot>();
         private readonly (uint Sequence, VehicleState State, double SentAt)[] _predicted = new (uint, VehicleState, double)[PredictionRing];
+        private readonly List<ulong> _targets = new List<ulong>(Core.SimulationConstants.MaxPlayersPerServer);
+
+        // Server: cars by owner, for per-client snapshot interest (distance from each client's own car).
+        private static readonly Dictionary<ulong, VehicleNetworkDriver> s_byOwner = new Dictionary<ulong, VehicleNetworkDriver>();
 
         private ArcadeVehicle _vehicle = null!;
         private Role _role;
@@ -52,8 +56,11 @@ namespace VoxelRush.Networking.Vehicles
             Remote,
         }
 
-        /// <summary>Server-wide count of snapshot RPCs sent (each fans out to every client).</summary>
+        /// <summary>Server-wide count of snapshot RPCs sent (each goes to the clients interested in that car this tick).</summary>
         public static long SnapshotsSent { get; private set; }
+
+        /// <summary>Server-wide count of per-client snapshot deliveries skipped by interest management.</summary>
+        public static long SnapshotsSkipped { get; private set; }
 
         public bool IsPredicting => _role == Role.Owner;
 
@@ -73,6 +80,7 @@ namespace VoxelRush.Networking.Vehicles
                 _role = Role.Server;
                 _serverQueue = new ServerInputQueue();
                 _stats.StartPosition = transform.position;
+                s_byOwner[OwnerClientId] = this;
                 NetworkSimulation.Instance.Register(this);
                 Debug.Log(LogEvent.Format("vehicle_spawned", ("ownerClientId", OwnerClientId), ("networkObjectId", NetworkObjectId), ("position", transform.position)));
             }
@@ -97,6 +105,11 @@ namespace VoxelRush.Networking.Vehicles
 
         public override void OnNetworkDespawn()
         {
+            if (_role == Role.Server && s_byOwner.TryGetValue(OwnerClientId, out VehicleNetworkDriver? mine) && mine == this)
+            {
+                s_byOwner.Remove(OwnerClientId);
+            }
+
             LogStats();
             if (_role == Role.Server || _role == Role.Owner)
             {
@@ -136,8 +149,7 @@ namespace VoxelRush.Networking.Vehicles
                 TrackServerStats();
                 if (tick % SnapshotEveryTicks == 0)
                 {
-                    SnapshotRpc(MakeSnapshot(tick));
-                    SnapshotsSent++;
+                    SendSnapshot(tick);
                 }
             }
             else if (_role == Role.Owner)
@@ -180,8 +192,42 @@ namespace VoxelRush.Networking.Vehicles
             }
         }
 
-        [Rpc(SendTo.NotServer, Delivery = RpcDelivery.Unreliable)]
-        private void SnapshotRpc(VehicleSnapshot snapshot)
+        // Interest management (VR-072): each client gets this car at a rate set by its distance from that client's car.
+        private void SendSnapshot(uint tick)
+        {
+            _targets.Clear();
+            Vector3 here = transform.position;
+            foreach (ulong client in NetworkManager.ConnectedClientsIds)
+            {
+                if (client == NetworkManager.ServerClientId)
+                {
+                    continue;
+                }
+
+                bool owner = client == OwnerClientId;
+                float distance = !owner && s_byOwner.TryGetValue(client, out VehicleNetworkDriver? theirs) && theirs != null
+                    ? Vector3.Distance(here, theirs.transform.position)
+                    : 0f;
+                if (Core.Networking.SnapshotInterest.ShouldSend(tick, distance, owner))
+                {
+                    _targets.Add(client);
+                    NetworkBandwidth.Meter.Record(client, NetworkBandwidth.VehicleSnapshotBytes);
+                }
+                else
+                {
+                    SnapshotsSkipped++;
+                }
+            }
+
+            if (_targets.Count > 0)
+            {
+                SnapshotRpc(MakeSnapshot(tick), RpcTarget.Group(_targets, RpcTargetUse.Temp));
+                SnapshotsSent++;
+            }
+        }
+
+        [Rpc(SendTo.SpecifiedInParams, Delivery = RpcDelivery.Unreliable)]
+        private void SnapshotRpc(VehicleSnapshot snapshot, RpcParams rpcParams = default)
         {
             if (_inbound != null)
             {

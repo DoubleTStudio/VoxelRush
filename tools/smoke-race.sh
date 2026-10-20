@@ -15,6 +15,8 @@ IMAGE="voxelrush-server:smoke"
 NETWORK="voxelrush-race"
 BOT_IMAGE="ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac"
 pids=()
+# Extra bot flags from the environment, e.g. BOT_ARGS="-simTransportLossPercent 2" (tools/smoke-loss.sh).
+read -r -a BOT_EXTRA <<<"${BOT_ARGS:-}"
 
 rm -rf "$LOGS" && mkdir -p "$WORLD" && chmod 777 "$WORLD"
 cleanup() {
@@ -47,10 +49,10 @@ for i in $(seq 1 "$BOTS"); do
   if [[ "$MODE" == "docker" ]]; then
     docker run --rm --init --network "$NETWORK" --user 10001 -e HOME=/tmp -v "$ROOT/build/bot-linux:/bot:ro" "$BOT_IMAGE" \
       timeout --kill-after=10 150 /bot/VoxelRushBot.x86_64 -batchmode -nographics -logFile - -connect "voxelrush-race-server:$PORT" \
-      -botRace "${extra[@]+"${extra[@]}"}" -smokeTestSeconds 48 >"$LOGS/bot$i.log" 2>&1 &
+      -botRace "${extra[@]+"${extra[@]}"}" "${BOT_EXTRA[@]+"${BOT_EXTRA[@]}"}" -smokeTestSeconds 48 >"$LOGS/bot$i.log" 2>&1 &
   else
     perl -e 'alarm shift; exec @ARGV' 150 "$ROOT/build/bot-mac/VoxelRush" -batchmode -nographics -logFile - -connect "127.0.0.1:$PORT" \
-      -botRace "${extra[@]+"${extra[@]}"}" -smokeTestSeconds 48 >"$LOGS/bot$i.log" 2>&1 &
+      -botRace "${extra[@]+"${extra[@]}"}" "${BOT_EXTRA[@]+"${BOT_EXTRA[@]}"}" -smokeTestSeconds 48 >"$LOGS/bot$i.log" 2>&1 &
   fi
   bot_pids+=($!); pids+=($!)
   sleep 0.3

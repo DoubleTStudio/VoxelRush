@@ -23,6 +23,10 @@ namespace VoxelRush.Networking.World
             writer.WriteValueSafe(payload.Length);
             writer.WriteBytesSafe(payload);
             manager.CustomMessagingManager.SendNamedMessage(name, clientId, writer, delivery);
+            if (manager.IsServer)
+            {
+                NetworkBandwidth.Meter.Record(clientId, payload.Length + sizeof(int));
+            }
         }
 
         public static void SendToAll(NetworkManager manager, string name, byte[] payload, NetworkDelivery delivery)
@@ -31,6 +35,13 @@ namespace VoxelRush.Networking.World
             writer.WriteValueSafe(payload.Length);
             writer.WriteBytesSafe(payload);
             manager.CustomMessagingManager.SendNamedMessageToAll(name, writer, delivery);
+            foreach (ulong client in manager.ConnectedClientsIds)
+            {
+                if (client != NetworkManager.ServerClientId)
+                {
+                    NetworkBandwidth.Meter.Record(client, payload.Length + sizeof(int));
+                }
+            }
         }
 
         public static bool TryRead(FastBufferReader reader, out byte[] payload)

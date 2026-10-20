@@ -62,7 +62,7 @@ namespace VoxelRush.Networking.Vehicles
                 return false;
             }
 
-            double renderTime = localTime + _serverTimeOffset - _delaySeconds;
+            double renderTime = localTime + _serverTimeOffset - EffectiveDelay();
             if (renderTime <= _entries[0].ServerTime || _count == 1)
             {
                 position = _entries[0].Position;
@@ -100,6 +100,23 @@ namespace VoxelRush.Networking.Vehicles
             position = Vector3.Distance(prev.Position, last.Position) > _teleportMeters ? last.Position : last.Position + velocity * (float)ahead;
             rotation = last.Rotation;
             return true;
+        }
+
+        /// <summary>
+        /// The configured delay, or 1.5× the recent snapshot spacing when snapshots arrive slower than that delay
+        /// (distant cars in VR-072 interest tiers), so the timeline stays between two snapshots instead of starving.
+        /// </summary>
+        public double EffectiveDelay()
+        {
+            if (_count < 2)
+            {
+                return _delaySeconds;
+            }
+
+            int first = System.Math.Max(0, _count - 8);
+            double spacing = (_entries[_count - 1].ServerTime - _entries[first].ServerTime) / (_count - 1 - first);
+            // 5% margin: spacing equal to the delay (up to rounding) isn't sparse.
+            return spacing > _delaySeconds * 1.05 ? spacing * 1.5 : _delaySeconds;
         }
 
         private readonly struct Entry

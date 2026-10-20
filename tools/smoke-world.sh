@@ -16,6 +16,8 @@ IMAGE="voxelrush-server:smoke"
 NETWORK="voxelrush-world"
 BOT_IMAGE="ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac"
 pids=()
+# Extra bot flags from the environment, e.g. BOT_ARGS="-simTransportLossPercent 2" (tools/smoke-loss.sh).
+read -r -a BOT_EXTRA <<<"${BOT_ARGS:-}"
 
 rm -rf "$LOGS" && mkdir -p "$WORLD" && chmod 777 "$WORLD"
 cleanup() {
@@ -45,9 +47,9 @@ start_bot() { # <log> <args...>
   local log="$1"; shift
   if [[ "$MODE" == "docker" ]]; then
     docker run --rm --init --network "$NETWORK" --user 10001 -e HOME=/tmp -v "$ROOT/build/bot-linux:/bot:ro" "$BOT_IMAGE" \
-      timeout --kill-after=10 120 /bot/VoxelRushBot.x86_64 -batchmode -nographics -logFile - -connect "voxelrush-world-server:$PORT" "$@" >"$log" 2>&1 &
+      timeout --kill-after=10 120 /bot/VoxelRushBot.x86_64 -batchmode -nographics -logFile - -connect "voxelrush-world-server:$PORT" "$@" "${BOT_EXTRA[@]+"${BOT_EXTRA[@]}"}" >"$log" 2>&1 &
   else
-    perl -e 'alarm shift; exec @ARGV' 120 "$ROOT/build/bot-mac/VoxelRush" -batchmode -nographics -logFile - -connect "127.0.0.1:$PORT" "$@" >"$log" 2>&1 &
+    perl -e 'alarm shift; exec @ARGV' 120 "$ROOT/build/bot-mac/VoxelRush" -batchmode -nographics -logFile - -connect "127.0.0.1:$PORT" "$@" "${BOT_EXTRA[@]+"${BOT_EXTRA[@]}"}" >"$log" 2>&1 &
   fi
   BOT_PID=$!; pids+=("$BOT_PID")
 }
