@@ -55,6 +55,14 @@ namespace VoxelRush.Tests.Domain.Hosting
         }
 
         [Test]
+        public void Parse_WorldDir()
+        {
+            Assert.That(ServerLaunchOptions.Parse(new[] { "-worldDir", "/data/world-1" }).Options!.WorldDir, Is.EqualTo("/data/world-1"));
+            Assert.That(ServerLaunchOptions.Parse(Array.Empty<string>()).Options!.WorldDir, Is.Null);
+            Assert.That(ServerLaunchOptions.Parse(new[] { "-worldDir", new string('a', 600) }).IsSuccess, Is.False);
+        }
+
+        [Test]
         public void Parse_MissingTrailingValue_Fails()
         {
             var result = ServerLaunchOptions.Parse(new[] { "-batchmode", "-port" });

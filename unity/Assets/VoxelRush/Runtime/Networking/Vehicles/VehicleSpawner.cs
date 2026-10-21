@@ -28,6 +28,26 @@ namespace VoxelRush.Networking.Vehicles
 
         public int Count => _cars.Count;
 
+        /// <summary>Server-side eye position of a player's car (edit reach is measured from here, never from a client claim).</summary>
+        public Vector3? EyeOf(ulong clientId) =>
+            _cars.TryGetValue(clientId, out NetworkObject car) && car != null ? car.transform.position + Vector3.up * 1.5f : (Vector3?)null;
+
+        /// <summary>World boxes of every car, so placed blocks can't trap a vehicle.</summary>
+        public IReadOnlyList<VoxelRush.World.Editing.WorldBox> Occupants()
+        {
+            var boxes = new List<VoxelRush.World.Editing.WorldBox>(_cars.Count);
+            foreach (NetworkObject car in _cars.Values)
+            {
+                if (car != null)
+                {
+                    Vector3 p = car.transform.position;
+                    boxes.Add(new VoxelRush.World.Editing.WorldBox(p.x - 1.2f, p.y - 1f, p.z - 2.4f, p.x + 1.2f, p.y + 1.5f, p.z + 2.4f));
+                }
+            }
+
+            return boxes;
+        }
+
         public static GameObject LoadPrefab() =>
             Resources.Load<GameObject>(PrefabResourcePath) ?? throw new System.InvalidOperationException($"Missing Resources/{PrefabResourcePath}.");
 

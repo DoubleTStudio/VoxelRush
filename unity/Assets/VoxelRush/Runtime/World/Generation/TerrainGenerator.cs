@@ -8,9 +8,19 @@ namespace VoxelRush.World.Generation
     /// Integer/fixed-point only, so every CPU and runtime produces bit-identical chunks; golden hashes pin the output.
     /// Changing any output requires bumping <see cref="Version"/>.
     /// </summary>
-    public sealed class TerrainGenerator
+    /// <summary>Deterministic base-block source for a world; clients and server must use the same kind and version.</summary>
+    public interface IBaseGenerator
+    {
+        int GeneratorVersion { get; }
+
+        byte[] GenerateBlocks(ChunkCoord coord);
+    }
+
+    public sealed class TerrainGenerator : IBaseGenerator
     {
         public const int Version = 1;
+
+        public int GeneratorVersion => Version;
 
         // Fixed-point: 16 fractional bits.
         private const int FixedOne = 1 << 16;
