@@ -92,6 +92,7 @@ namespace VoxelRush.Networking.Vehicles
                 _source = FindInputSource();
                 ConfigureConditions();
                 NetworkSimulation.Instance.Register(this);
+                LocalPlayer.Vehicle = _vehicle;
                 Debug.Log(LogEvent.Format("vehicle_owned", ("networkObjectId", NetworkObjectId), ("inputSource", _source?.GetType().Name ?? "none")));
             }
             else
@@ -109,6 +110,11 @@ namespace VoxelRush.Networking.Vehicles
             if (_role == Role.Server && s_byOwner.TryGetValue(OwnerClientId, out VehicleNetworkDriver? mine) && mine == this)
             {
                 s_byOwner.Remove(OwnerClientId);
+            }
+
+            if (_role == Role.Owner && LocalPlayer.Vehicle == _vehicle)
+            {
+                LocalPlayer.Vehicle = null;
             }
 
             LogStats();
@@ -299,6 +305,8 @@ namespace VoxelRush.Networking.Vehicles
             if (_role == Role.Remote)
             {
                 _interpolator!.Add(snapshot.ServerTick * (double)NetworkSimulation.Instance.TickSeconds, snapshot.Position, snapshot.Rotation, now);
+                // COSM-002: spark trails show a remote boost.
+                CarCosmetics.SetRemoteBoosting(transform, snapshot.Boosting);
             }
             else if (_role == Role.Owner)
             {

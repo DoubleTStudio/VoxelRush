@@ -10,8 +10,12 @@ namespace VoxelRush.Networking.Race
     /// <summary>Client side of races: the latest track, state, own progress and results from the server (display only).</summary>
     public sealed class RaceClient : IRaceView
     {
+        private readonly NetworkManager _manager;
+
         public RaceClient(NetworkManager manager)
         {
+            _manager = manager;
+            manager.CustomMessagingManager.RegisterNamedMessageHandler(RaceMessages.Lobby, OnLobby);
             manager.CustomMessagingManager.RegisterNamedMessageHandler(RaceMessages.Track, OnTrack);
             manager.CustomMessagingManager.RegisterNamedMessageHandler(RaceMessages.State, OnState);
             manager.CustomMessagingManager.RegisterNamedMessageHandler(RaceMessages.Progress, OnProgress);
@@ -31,6 +35,27 @@ namespace VoxelRush.Networking.Race
 
         public event Action? Changed;
 
+        /// <summary>Ready count among connected racers while waiting (RACE-002).</summary>
+        public RaceLobbyMessage? Lobby { get; private set; }
+
+        /// <summary>What this player last asked for; cleared when a countdown starts.</summary>
+        public bool WantsReady { get; private set; }
+
+        public void SetReady(bool ready)
+        {
+            WantsReady = ready;
+            WorldMessages.Send(_manager, RaceMessages.Ready, NetworkManager.ServerClientId, new[] { (byte)(ready ? 1 : 0) }, NetworkDelivery.ReliableSequenced);
+        }
+
+        private void OnLobby(ulong sender, FastBufferReader reader)
+        {
+            if (WorldMessages.TryRead(reader, out byte[] payload) && RaceLobbyMessage.TryDecode(payload, out RaceLobbyMessage lobby))
+            {
+                Lobby = lobby;
+                Changed?.Invoke();
+            }
+        }
+
         private void OnTrack(ulong sender, FastBufferReader reader)
         {
             if (WorldMessages.TryRead(reader, out byte[] payload) && TrackMessage.TryDecode(payload, out TrackDefinition? track))
@@ -47,6 +72,9 @@ namespace VoxelRush.Networking.Race
                 if (state!.State == RacePhase.Countdown)
                 {
                     Results = null;
+                    WantsReady = false;
+                    // RACE-003 last race's crossings would highlight the wrong gate until the first new crossing.
+                    Progress = RaceGuide.AtCountdown(Progress);
                 }
 
                 State = state;

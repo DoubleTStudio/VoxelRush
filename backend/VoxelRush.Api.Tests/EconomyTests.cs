@@ -112,6 +112,29 @@ public sealed class EconomyTests
     }
 
     [Test]
+    public async Task GameServers_ReadOwnedSkus_ActiveOnly_WithTheServiceTokenOnly()
+    {
+        TokenPair p = await _api.GuestAsync();
+        await ClaimAsync(p, "paint.racing-red");
+        await ServerGrantAsync(p.PlayerId, "paint.chrome", "gpa.cosm.1");
+        await ServerGrantAsync(p.PlayerId, "flag.checkered-gold", "gpa.cosm.2");
+        await _api.Service().PostAsJsonAsync("/internal/v1/entitlements/revoke", new { source = "purchase", transactionId = "gpa.cosm.2" });
+
+        var owned = await _api.Service().GetFromJsonAsync<JsonElement>($"/internal/v1/players/{p.PlayerId}/entitlements");
+
+        Assert.That(owned.GetProperty("skus").EnumerateArray().Select(s => s.GetString()), Is.EquivalentTo(new[] { "paint.racing-red", "paint.chrome" }),
+            "refunded items are not shown");
+        var stranger = await _api.Service().GetFromJsonAsync<JsonElement>($"/internal/v1/players/{Guid.NewGuid()}/entitlements");
+        Assert.That(stranger.GetProperty("skus").EnumerateArray(), Is.Empty, "unknown players own nothing");
+        Assert.That((await _api.Client(p.AccessToken).GetAsync($"/internal/v1/players/{p.PlayerId}/entitlements")).StatusCode, Is.EqualTo(HttpStatusCode.Unauthorized),
+            "a player token is not a service token");
+        Assert.That((await _api.Client().GetAsync($"/internal/v1/players/{p.PlayerId}/entitlements")).StatusCode, Is.EqualTo(HttpStatusCode.Unauthorized));
+        Assert.That((await _api.Service("wrong-service-token-0123456789abcdef").GetAsync($"/internal/v1/players/{p.PlayerId}/entitlements")).StatusCode,
+            Is.EqualTo(HttpStatusCode.Unauthorized));
+        Assert.That((await _api.Service().GetAsync("/internal/v1/players/not-a-guid/entitlements")).StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
+    }
+
+    [Test]
     public void CatalogValidation_RejectsNonCosmeticItems()
     {
         Assert.That(EntitlementStore.Load().Items.All(i => EntitlementStore.CosmeticKinds.Contains(i.Kind)), Is.True);

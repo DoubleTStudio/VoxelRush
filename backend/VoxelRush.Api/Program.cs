@@ -33,6 +33,17 @@ builder.Services.AddSingleton<ProgressionStore>();
 builder.Services.AddSingleton<EntitlementStore>();
 builder.Services.AddSingleton<LeaseStore>();
 builder.Services.AddSingleton<BackupStore>();
+// ALLOC-001: a host agent starts one server per world; without one every world shares GameServerEndpoint.
+if (string.IsNullOrEmpty(options.HostAgentUrl))
+{
+    builder.Services.AddSingleton<IWorldHostAllocator, StaticAllocator>();
+}
+else
+{
+    builder.Services.AddHttpClient(HostAgentAllocator.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(options.HostAgentTimeoutSeconds));
+    builder.Services.AddSingleton<IWorldHostAllocator, HostAgentAllocator>();
+}
+
 builder.Services.AddHttpClient(GooglePlayVerifier.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(10));
 builder.Services.AddHttpClient(AdRewardService.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(10));
 builder.Services.AddSingleton<AppleVerifier>();
@@ -257,10 +268,26 @@ worlds.MapPost("/{id:guid}/restore", async (Guid id, RestoreRequest request, Cla
     };
 });
 
-worlds.MapPost("/{id:guid}/join", async (Guid id, ClaimsPrincipal user, WorldStore store, CancellationToken ct) =>
+worlds.MapPost("/{id:guid}/join", async (Guid id, ClaimsPrincipal user, HttpResponse http, WorldStore store, CancellationToken ct) =>
 {
-    (WorldError error, JoinResponse? join) = await store.JoinAsync(PlayerId(user), id, ct);
-    return error == WorldError.None ? Results.Ok(join) : Problem(error);
+    (WorldError error, AllocationResult? host, JoinResponse? join) = await store.JoinAsync(PlayerId(user), id, ct);
+    if (error != WorldError.None)
+    {
+        return Problem(error);
+    }
+
+    if (host!.Status != AllocationStatus.Ready)
+    {
+        http.Headers.RetryAfter = host.RetryAfterSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    // ALLOC-001: no ticket until the world's server is up, so it can't expire while the server boots.
+    return host.Status switch
+    {
+        AllocationStatus.Ready => Results.Ok(join),
+        AllocationStatus.Starting => Results.Json(new JoinPending("starting", host.RetryAfterSeconds), statusCode: StatusCodes.Status202Accepted),
+        _ => Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: host.Reason == VoxelRush.Hosting.HostEnsureResponse.NoCapacity ? "no_capacity" : "host_unavailable"),
+    };
 });
 
 // SAVE-005 leases (game servers only).
@@ -320,6 +347,10 @@ app.MapPost("/internal/v1/players/{id:guid}/grants", async (Guid id, GrantReques
     return ok ? Results.Ok(result) : Results.Problem(statusCode: StatusCodes.Status400BadRequest, title: "invalid_grant");
 }).AddEndpointFilter(async (context, next) => ServiceAuthorized(context.HttpContext, options) ? await next(context) : Results.Unauthorized());
 
+// COSM-001: game servers check what a player owns before showing it to others (unknown players own nothing).
+app.MapGet("/internal/v1/players/{id:guid}/entitlements", async (Guid id, EntitlementStore store, CancellationToken ct) =>
+    Results.Ok(new OwnedSkusView((await store.ListAsync(id, ct)).Select(e => e.Sku).ToArray())))
+    .AddEndpointFilter(async (context, next) => ServiceAuthorized(context.HttpContext, options) ? await next(context) : Results.Unauthorized());
 app.MapPost("/internal/v1/players/{id:guid}/entitlements", async (Guid id, GrantEntitlementRequest request, EntitlementStore store, CancellationToken ct) =>
     EntitlementResult(await store.GrantAsync(id, request, ct)))
     .AddEndpointFilter(async (context, next) => ServiceAuthorized(context.HttpContext, options) ? await next(context) : Results.Unauthorized());

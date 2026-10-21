@@ -89,6 +89,11 @@ namespace VoxelRush.Networking.World
             manager.CustomMessagingManager.RegisterNamedMessageHandler(WorldMessages.CacheManifest, OnCacheManifest);
         }
 
+        public WorldInfo Info => _info;
+
+        /// <summary>The authoritative chunk (colliders read it; never mutate).</summary>
+        public ChunkData? GetChunk(ChunkCoord coord) => _authority.GetChunk(coord);
+
         public long Accepted => _authority.Accepted;
 
         public long Rejected => _authority.Rejected;

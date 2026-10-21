@@ -502,6 +502,7 @@ GameObject:
   - component: {fileID: 6198173036663912119}
   - component: {fileID: 419102524688093501}
   - component: {fileID: 6979583513850740891}
+  - component: {fileID: 2840193746551203917}
   m_Layer: 0
   m_Name: NetworkedCar
   m_TagString: Untagged
@@ -662,6 +663,19 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 445e2c9c2feff4806b1897b652ca0b8b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: VoxelRush.Networking::VoxelRush.Networking.Vehicles.VehicleNetworkDriver
+  ShowTopMostFoldoutHeaderGroup: 1
+--- !u!114 &2840193746551203917
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5745679245052846319}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e42f4de57a16464a98f5ec522a00cccb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: VoxelRush.Networking::VoxelRush.Networking.Vehicles.VehicleLoadout
   ShowTopMostFoldoutHeaderGroup: 1
 --- !u!1 &7303403158378788785
 GameObject:

@@ -1,9 +1,11 @@
 using System;
 using UnityEngine;
 using VoxelRush.Core;
+using VoxelRush.Core.Cosmetics;
 using VoxelRush.Core.Diagnostics;
 using VoxelRush.Core.Hosting;
 using VoxelRush.Core.Networking;
+using VoxelRush.Gameplay.World;
 using VoxelRush.Networking;
 using VoxelRush.Networking.Race;
 using VoxelRush.Networking.Vehicles;
@@ -34,6 +36,8 @@ namespace VoxelRush.Server
         private WorldSyncServer? _world;
         private RaceServer? _race;
         private RewardClient? _rewards;
+        private EntitlementClient? _entitlements;
+        private LoadoutServer? _loadout;
         private LeaseClient? _lease;
         private ApiSnapshotRemote? _snapshots;
         private double _emptySince = -1;
@@ -177,6 +181,12 @@ namespace VoxelRush.Server
                 return;
             }
 
+            // MVP-003: placed blocks are solid; built before any car spawns.
+            WorldSyncServer synced = _world;
+            var colliders = new GameObject(nameof(WorldColliders)).AddComponent<WorldColliders>();
+            colliders.Bind(() => synced.Info, synced.GetChunk);
+            colliders.Refresh(all: true);
+
             // SAVE-006: XP for validated results, only with API identities (tickets) and API credentials configured.
             if (tickets != null)
             {
@@ -185,6 +195,22 @@ namespace VoxelRush.Server
             }
 
             _race = _network.CreateRace(ArenaTrack.Create(), _vehicles, Options.RaceAutoStart, _rewards == null ? null : _rewards.Enqueue);
+
+            // COSM-001/002: with tickets a cosmetic shows only if the API says the player owns it (fail closed without
+            // the API); development servers have no identities, so any catalog item shows.
+            LoadoutAuthority loadouts;
+            if (tickets == null)
+            {
+                loadouts = LoadoutAuthority.Development();
+            }
+            else
+            {
+                _entitlements = EntitlementClient.FromEnvironment();
+                loadouts = _entitlements != null ? LoadoutAuthority.Verified(_entitlements.OwnedAsync) : LoadoutAuthority.DefaultOnly();
+            }
+
+            _loadout = new LoadoutServer(loadouts, _vehicles, _network.SessionOf);
+            Debug.Log(LogEvent.Format("server_cosmetics", ("mode", _loadout.Mode)));
             _simulation = NetworkSimulation.Instance;
             _nextMetricsAt = Time.realtimeSinceStartupAsDouble + MetricsIntervalSeconds;
             NetworkBandwidth.Meter.Flush(Time.realtimeSinceStartupAsDouble);
@@ -199,6 +225,7 @@ namespace VoxelRush.Server
             {
                 Debug.Log(LogEvent.Format("client_disconnected", ("clientId", clientId), ("players", players)));
                 _vehicles.Despawn(clientId);
+                _loadout?.OnClientDisconnected(clientId);
                 _world.OnClientDisconnected(clientId);
                 _race.OnClientDisconnected(clientId, CurrentTick);
             };
@@ -222,6 +249,7 @@ namespace VoxelRush.Server
             _network?.Tick(now);
             _world?.Tick(CurrentTick, now);
             _race?.Tick(CurrentTick);
+            _loadout?.Tick(now);
             if (_simulation != null && now >= _nextMetricsAt)
             {
                 _nextMetricsAt = now + MetricsIntervalSeconds;
@@ -284,6 +312,7 @@ namespace VoxelRush.Server
         {
             _rewards?.Dispose();
             _rewards = null;
+            DisposeLoadout();
             _world?.Dispose();
             _world = null;
             _snapshots?.Dispose();
@@ -295,6 +324,7 @@ namespace VoxelRush.Server
 
         private void Shutdown(int exitCode, string reason)
         {
+            DisposeLoadout();
             _world?.Dispose();
             _world = null;
             _snapshots?.Dispose();
@@ -318,6 +348,19 @@ namespace VoxelRush.Server
             {
                 Application.Quit(exitCode);
             }
+        }
+
+        private void DisposeLoadout()
+        {
+            if (_loadout != null)
+            {
+                Debug.Log(LogEvent.Format("server_horn_summary", ("relayed", _loadout.HornsRelayed), ("rateLimited", _loadout.HornsLimited)));
+            }
+
+            _loadout?.Dispose();
+            _loadout = null;
+            _entitlements?.Dispose();
+            _entitlements = null;
         }
 
         private void ReleaseLease()
