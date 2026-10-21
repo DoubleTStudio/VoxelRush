@@ -113,7 +113,7 @@ namespace VoxelRush.Presentation.World
 
         private void LateUpdate()
         {
-            if (_target != null && _gestures.Read(out Vector2 drag, out float pinch))
+            if (_target != null && !UI.GameMenu.IsOpen && _gestures.Read(out Vector2 drag, out float pinch))
             {
                 float perPixel = _degreesPerScreenWidth / Mathf.Max(1, Screen.width);
                 if (drag != Vector2.zero)
