@@ -22,6 +22,7 @@ namespace VoxelRush.World.Editing
         private readonly Dictionary<string, TokenBucket> _rates = new Dictionary<string, TokenBucket>();
         private readonly EditValidator _validator;
         private readonly IMutationSink? _sink;
+        private readonly List<WorldBox> _locked = new List<WorldBox>();
         private readonly Dictionary<Guid, IReadOnlyList<ChunkMutationBatch>> _processedServer = new Dictionary<Guid, IReadOnlyList<ChunkMutationBatch>>();
         private readonly Queue<Guid> _processedServerOrder = new Queue<Guid>();
         private readonly Func<string, WorldRole> _roleOf;
@@ -45,6 +46,9 @@ namespace VoxelRush.World.Editing
 
         /// <summary>Regions where structural analysis is in progress (DES-011); client edits there are refused for now.</summary>
         public Func<BlockPos, bool>? IsBlocked { get; set; }
+
+        /// <summary>Locked track regions (VR-061): no edits or server changes until unlocked; races use an overlay instead.</summary>
+        public IReadOnlyList<WorldBox> Locked => _locked;
 
         public long Accepted { get; private set; }
 
@@ -70,6 +74,29 @@ namespace VoxelRush.World.Editing
                     SetLastChange(batch.Chunk, change.Index, batch.NewRevision);
                 }
             }
+        }
+
+        public void Lock(IReadOnlyList<WorldBox> region) => _locked.AddRange(region);
+
+        public void Unlock(IReadOnlyList<WorldBox> region)
+        {
+            foreach (WorldBox box in region)
+            {
+                _locked.Remove(box);
+            }
+        }
+
+        public bool IsLocked(BlockPos block)
+        {
+            foreach (WorldBox box in _locked)
+            {
+                if (box.Overlaps(block))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         public bool RemoveChunk(ChunkCoord coord)
@@ -160,6 +187,11 @@ namespace VoxelRush.World.Editing
             }
 
             BlockPos target = ChunkMath.ToWorld(intent.Chunk, local);
+            if (IsLocked(target))
+            {
+                return EditResult.Reject(EditRejection.RaceLocked);
+            }
+
             if (IsBlocked != null && IsBlocked(target))
             {
                 return EditResult.Reject(EditRejection.StructureSettling);
@@ -216,6 +248,11 @@ namespace VoxelRush.World.Editing
                     if (change.Index >= ChunkMath.Volume)
                     {
                         return new ServerCommitResult(EditRejection.InvalidIndex, Array.Empty<ChunkMutationBatch>(), false);
+                    }
+
+                    if (_locked.Count > 0 && IsLocked(ChunkMath.ToWorld(chunkChanges.Chunk, LocalBlock.FromIndex(change.Index))))
+                    {
+                        return new ServerCommitResult(EditRejection.RaceLocked, Array.Empty<ChunkMutationBatch>(), false);
                     }
                 }
             }

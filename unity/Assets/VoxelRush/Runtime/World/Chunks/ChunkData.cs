@@ -77,6 +77,9 @@ namespace VoxelRush.World.Chunks
             return chunk;
         }
 
+        /// <summary>An independent copy (same base, edits and revision), e.g. for a race's match overlay.</summary>
+        public ChunkData Clone() => FromSnapshot(Coord, GeneratorVersion, (byte[])_base.Clone(), Revision, _edits);
+
         public ChunkCoord Coord { get; }
 
         public int GeneratorVersion { get; }
