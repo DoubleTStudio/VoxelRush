@@ -126,6 +126,26 @@ namespace VoxelRush.Networking.Online
             return new ApiResult<string>(PlayerId, null);
         }
 
+        /// <summary>A short-lived code another device can redeem to sign in as this player (SAVE-006).</summary>
+        public async Task<ApiResult<string>> CreateLinkCodeAsync()
+        {
+            (long status, string body) = await AuthorizedAsync("POST", "v1/auth/link-code", "{}");
+            return status == 200 ? new ApiResult<string>(JsonUtility.FromJson<LinkCodeReply>(body).code, null) : new ApiResult<string>(null, Describe(status, body));
+        }
+
+        /// <summary>Switches this device to the account that issued <paramref name="code"/>; the old guest is left behind.</summary>
+        public async Task<ApiResult<string>> RedeemLinkCodeAsync(string code)
+        {
+            (long status, string body) = await SendSafeAsync("POST", "v1/auth/link", $"{{\"code\":{Quote(code.Trim())}}}", null);
+            if (status != 200)
+            {
+                return new ApiResult<string>(null, status == 404 ? "That code is wrong or expired." : Describe(status, body));
+            }
+
+            Accept(body);
+            return new ApiResult<string>(PlayerId, null);
+        }
+
         public Task<ApiResult<WorldEntry[]>> MyWorldsAsync() => ListAsync("v1/worlds/mine");
 
         public Task<ApiResult<WorldEntry[]>> PublicWorldsAsync() => ListAsync("v1/worlds/public?limit=20");
@@ -339,6 +359,12 @@ namespace VoxelRush.Networking.Online
             public string playerId = string.Empty;
             public string accessToken = string.Empty;
             public string refreshToken = string.Empty;
+        }
+
+        [Serializable]
+        private sealed class LinkCodeReply
+        {
+            public string code = string.Empty;
         }
 
         [Serializable]
