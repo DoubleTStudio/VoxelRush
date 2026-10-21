@@ -8,6 +8,7 @@ PostgreSQL, forward-only migrations in `backend/VoxelRush.Api/Migrations` (appli
 | `refresh_tokens` | Rotating refresh tokens | SHA-256 only; `family_id` revoked on reuse |
 | `worlds` | World metadata | name 1–40 chars; visibility `private`/`friends`/`public`; generator and schema version pinned at creation; `revision` |
 | `world_members` | ACL | role `visitor`/`editor`; optional expiry |
+| `world_invites` | Owner-issued invitations | code stored as SHA-256; role `visitor`/`editor`; expiry ≤ 7 days; 1–50 uses; revocable |
 | `chunk_snapshots` | Snapshot index | (world, chunk, revision) unique; `sha256` 32 bytes; `pending` → `committed` after verification |
 | `player_progress` | XP/level | xp ≥ 0, level ≥ 1, `version` for optimistic concurrency |
 | `player_settings` | Non-competitive preferences | JSON ≤ 8 KiB, `version` (ETag) |
