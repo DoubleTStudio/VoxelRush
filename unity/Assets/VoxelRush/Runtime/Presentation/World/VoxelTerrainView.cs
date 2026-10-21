@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using VoxelRush.World.Chunks;
+using VoxelRush.World.Editing;
 using VoxelRush.World.Generation;
 using VoxelRush.World.Meshing;
 
@@ -11,7 +12,7 @@ namespace VoxelRush.Presentation.World
     /// Streaming, budgets and colliders arrive in VR-023.
     /// </summary>
     [DisallowMultipleComponent]
-    public sealed class VoxelTerrainView : MonoBehaviour
+    public sealed class VoxelTerrainView : MonoBehaviour, IEditWorld
     {
         [SerializeField] private long _seed = 12345;
         [SerializeField] private Vector3Int _minChunk = new Vector3Int(-2, -1, -2);
@@ -19,6 +20,7 @@ namespace VoxelRush.Presentation.World
         [SerializeField] private Material? _material;
 
         private readonly Dictionary<ChunkCoord, GameObject> _chunkObjects = new Dictionary<ChunkCoord, GameObject>();
+        private readonly Dictionary<ChunkCoord, ChunkData> _chunks = new Dictionary<ChunkCoord, ChunkData>();
 
         public IReadOnlyDictionary<ChunkCoord, GameObject> ChunkObjects => _chunkObjects;
 
@@ -28,7 +30,7 @@ namespace VoxelRush.Presentation.World
         {
             Clear();
             var generator = new TerrainGenerator(_seed);
-            var chunks = new Dictionary<ChunkCoord, ChunkData>();
+            Dictionary<ChunkCoord, ChunkData> chunks = _chunks;
             for (int x = _minChunk.x; x <= _maxChunk.x; x++)
             {
                 for (int y = _minChunk.y; y <= _maxChunk.y; y++)
@@ -84,7 +86,15 @@ namespace VoxelRush.Presentation.World
             }
 
             _chunkObjects.Clear();
+            _chunks.Clear();
         }
+
+        public bool IsLoaded(BlockPos block) => _chunks.ContainsKey(ChunkMath.ToChunk(block));
+
+        public byte GetBlock(BlockPos block) =>
+            _chunks.TryGetValue(ChunkMath.ToChunk(block), out ChunkData chunk) ? chunk.Get(ChunkMath.ToLocal(block)) : BlockIds.Air;
+
+        public bool IsSolid(BlockPos block) => GetBlock(block) != BlockIds.Air;
 
         // Edit-mode tools and previews build outside play mode, where Destroy isn't allowed.
         private static void DestroyAny(Object target)
