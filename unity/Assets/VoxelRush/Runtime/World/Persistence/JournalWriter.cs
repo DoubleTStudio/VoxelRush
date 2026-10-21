@@ -47,7 +47,9 @@ namespace VoxelRush.World.Persistence
         public long DurableCount { get; private set; }
 
         /// <summary>Room for at least one more batch and no write failure. Only the authority enqueues, so this holds until it does.</summary>
-        public bool CanAccept => _failure == null && !_queue.IsAddingCompleted && _queue.Count < _capacity;
+        public bool CanAccept => CanAcceptMany(1);
+
+        public bool CanAcceptMany(int count) => _failure == null && !_queue.IsAddingCompleted && _queue.Count + count <= _capacity;
 
         void IMutationSink.Accept(ChunkMutationBatch batch)
         {

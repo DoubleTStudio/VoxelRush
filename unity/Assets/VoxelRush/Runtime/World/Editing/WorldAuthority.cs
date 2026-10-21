@@ -22,6 +22,8 @@ namespace VoxelRush.World.Editing
         private readonly Dictionary<string, TokenBucket> _rates = new Dictionary<string, TokenBucket>();
         private readonly EditValidator _validator;
         private readonly IMutationSink? _sink;
+        private readonly Dictionary<Guid, IReadOnlyList<ChunkMutationBatch>> _processedServer = new Dictionary<Guid, IReadOnlyList<ChunkMutationBatch>>();
+        private readonly Queue<Guid> _processedServerOrder = new Queue<Guid>();
         private readonly Func<string, WorldRole> _roleOf;
         private readonly int _maxEditsPerSecond;
         private readonly int _maxQueuedPerTick;
@@ -181,6 +183,74 @@ namespace VoxelRush.World.Editing
                 new[] { new BlockChange((ushort)local.Index, blockType) });
             _sink?.Accept(batch);
             return EditResult.Accept(batch);
+        }
+
+        /// <summary>
+        /// Commits server-originated changes (explosions, collapse, scripted builds) under one operation id: every
+        /// chunk commits or none does. No reach/zone/rate checks here; the caller already applied its own policy.
+        /// </summary>
+        public ServerCommitResult CommitServerChanges(Guid operationId, string actorId, IReadOnlyList<ChunkChanges> changes, uint serverTick)
+        {
+            if (_processedServer.TryGetValue(operationId, out IReadOnlyList<ChunkMutationBatch>? earlier))
+            {
+                return new ServerCommitResult(EditRejection.None, earlier, true);
+            }
+
+            foreach (ChunkChanges chunkChanges in changes)
+            {
+                if (!_chunks.ContainsKey(chunkChanges.Chunk))
+                {
+                    return new ServerCommitResult(EditRejection.ChunkNotLoaded, Array.Empty<ChunkMutationBatch>(), false);
+                }
+
+                foreach (BlockChange change in chunkChanges.Changes)
+                {
+                    if (change.Index >= ChunkMath.Volume)
+                    {
+                        return new ServerCommitResult(EditRejection.InvalidIndex, Array.Empty<ChunkMutationBatch>(), false);
+                    }
+                }
+            }
+
+            if (_sink != null && !_sink.CanAcceptMany(changes.Count))
+            {
+                return new ServerCommitResult(EditRejection.PersistenceBackpressure, Array.Empty<ChunkMutationBatch>(), false);
+            }
+
+            var batches = new List<ChunkMutationBatch>(changes.Count);
+            foreach (ChunkChanges chunkChanges in changes)
+            {
+                ChunkData chunk = _chunks[chunkChanges.Chunk];
+                ulong baseRevision = chunk.Revision;
+                var applied = new List<BlockChange>(chunkChanges.Changes.Count);
+                foreach (BlockChange change in chunkChanges.Changes)
+                {
+                    if (chunk.Set(LocalBlock.FromIndex(change.Index), change.BlockType))
+                    {
+                        applied.Add(change);
+                        SetLastChange(chunkChanges.Chunk, change.Index, chunk.Revision);
+                    }
+                }
+
+                if (applied.Count == 0)
+                {
+                    continue;
+                }
+
+                var batch = new ChunkMutationBatch(operationId, actorId, chunkChanges.Chunk, baseRevision, chunk.Revision, serverTick, applied);
+                _sink?.Accept(batch);
+                batches.Add(batch);
+            }
+
+            _processedServer[operationId] = batches;
+            _processedServerOrder.Enqueue(operationId);
+            while (_processedServerOrder.Count > _operationMemory)
+            {
+                _processedServer.Remove(_processedServerOrder.Dequeue());
+            }
+
+            Accepted++;
+            return new ServerCommitResult(EditRejection.None, batches, false);
         }
 
         private static bool IsTransient(EditRejection rejection) =>
