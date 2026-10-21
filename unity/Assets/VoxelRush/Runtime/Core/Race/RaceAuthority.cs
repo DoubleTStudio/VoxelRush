@@ -242,13 +242,17 @@ namespace VoxelRush.Core.Race
                 return CrossingOutcome.InvalidPosition;
             }
 
+            // A server catching up after a stall samples once for several physics ticks: allow distance for the time
+            // that actually passed (capped at one second), so legitimate cars aren't flagged as teleporting.
+            uint elapsed = racer.LastSampleTick is uint last && tick > last ? Math.Min(tick - last, (uint)SimulationConstants.ServerTickRate) : 1;
+            racer.LastSampleTick = tick;
             if (respawned)
             {
                 racer.Respawns++;
                 return CrossingOutcome.Respawned;
             }
 
-            float maxStep = Track.MaxPlausibleSpeed / SimulationConstants.ServerTickRate * 1.5f + 1f;
+            float maxStep = Track.MaxPlausibleSpeed / SimulationConstants.ServerTickRate * 1.5f * elapsed + 1f;
             if (from.HorizontalDistance(to) > maxStep)
             {
                 SuspiciousSamples++;
@@ -382,6 +386,8 @@ namespace VoxelRush.Core.Race
             public int Crossings { get; set; }
 
             public uint LastCrossingTick { get; set; }
+
+            public uint? LastSampleTick { get; set; }
 
             public uint? FinishTick { get; set; }
 
