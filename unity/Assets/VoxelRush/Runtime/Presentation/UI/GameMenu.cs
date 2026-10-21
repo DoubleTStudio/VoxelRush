@@ -11,7 +11,7 @@ namespace VoxelRush.Presentation.UI
 {
     /// <summary>
     /// In-game menu (UI-001): a pause button while connected opens settings (steering sensitivity, button size,
-    /// graphics, effects volume) and Leave. Settings apply immediately and are saved on close (SAVE-008 LocalSettings).
+    /// graphics, effects volume, vibration) and Leave. Settings apply immediately and are saved on close (SAVE-008 LocalSettings).
     /// The game keeps running underneath: it's multiplayer, nothing pauses.
     /// </summary>
     [DisallowMultipleComponent]
@@ -23,6 +23,7 @@ namespace VoxelRush.Presentation.UI
         private float _buttonScale;
         private int _quality;
         private float _effects;
+        private bool _vibration = true;
         private GUIStyle? _button;
         private GUIStyle? _label;
 
@@ -36,6 +37,7 @@ namespace VoxelRush.Presentation.UI
             _buttonScale = current.Controls.ButtonScale;
             _quality = current.QualityOverride is QualityTier tier ? (int)tier + 1 : 0;
             _effects = current.EffectsVolume;
+            _vibration = current.Vibration;
             IsOpen = true;
         }
 
@@ -51,7 +53,7 @@ namespace VoxelRush.Presentation.UI
             LocalSettings current = DeviceSettings.Current;
             var controls = new ControlSettings(_sensitivity, _buttonScale);
             QualityTier? tier = _quality == 0 ? (QualityTier?)null : (QualityTier)(_quality - 1);
-            var updated = new LocalSettings(controls, tier, current.MusicVolume, _effects);
+            var updated = new LocalSettings(controls, tier, current.MusicVolume, _effects, _vibration);
             DeviceSettings.Save(updated);
             Apply(updated);
         }
@@ -80,12 +82,13 @@ namespace VoxelRush.Presentation.UI
             AudioListener.volume = Mathf.Clamp01(settings.EffectsVolume);
         }
 
-        internal void SetForTest(float sensitivity, float buttonScale, int quality, float effects)
+        internal void SetForTest(float sensitivity, float buttonScale, int quality, float effects, bool vibration = true)
         {
             _sensitivity = sensitivity;
             _buttonScale = buttonScale;
             _quality = quality;
             _effects = effects;
+            _vibration = vibration;
         }
 
         private void Start() => AudioListener.volume = Mathf.Clamp01(DeviceSettings.Current.EffectsVolume);
@@ -117,7 +120,7 @@ namespace VoxelRush.Presentation.UI
                 return;
             }
 
-            GUILayout.BeginArea(new Rect((width - 620f) / 2f, 60f, 620f, 600f), GUI.skin.box);
+            GUILayout.BeginArea(new Rect((width - 620f) / 2f, 30f, 620f, 660f), GUI.skin.box);
             GUILayout.Label($"Steering sensitivity  {_sensitivity:0.00}", _label);
             _sensitivity = GUILayout.HorizontalSlider(_sensitivity, ControlSettings.MinSensitivity, ControlSettings.MaxSensitivity, GUILayout.Height(40));
             GUILayout.Label($"Button size  {_buttonScale:0.00}", _label);
@@ -126,6 +129,12 @@ namespace VoxelRush.Presentation.UI
             _quality = GUILayout.Toolbar(_quality, QualityNames, _button, GUILayout.Height(56));
             GUILayout.Label($"Effects volume  {Mathf.RoundToInt(_effects * 100)}%", _label);
             _effects = GUILayout.HorizontalSlider(_effects, 0f, 1f, GUILayout.Height(40));
+            // RACE-003 accessibility: haptic cues on checkpoints can be turned off.
+            if (GUILayout.Button(_vibration ? "Vibration: On" : "Vibration: Off", _button, GUILayout.Height(56)))
+            {
+                _vibration = !_vibration;
+            }
+
             GUILayout.Space(16);
             if (GUILayout.Button("Resume", _button, GUILayout.Height(64)))
             {

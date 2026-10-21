@@ -14,6 +14,8 @@ namespace VoxelRush.Tests.EditMode
         [TestCase(BuildEntryPoints.ClientScene, "VoxelRush.Presentation.ClientSmokeProbe")]
         [TestCase(BuildEntryPoints.ClientScene, "VoxelRush.Networking.ClientBootstrap")]
         [TestCase(BuildEntryPoints.ClientScene, "VoxelRush.Presentation.UI.RaceHud")]
+        [TestCase(BuildEntryPoints.ClientScene, "VoxelRush.Presentation.World.CheckpointView")]
+        [TestCase(BuildEntryPoints.ClientScene, "VoxelRush.Presentation.UI.RaceDashboard")]
         [TestCase(BuildEntryPoints.BotScene, "VoxelRush.Networking.ClientBootstrap")]
         [TestCase(BuildEntryPoints.ServerScene, "VoxelRush.Server.ServerHost")]
         public void Scene_ContainsExactlyOneEntryComponent(string scenePath, string componentType)
