@@ -65,7 +65,7 @@ namespace VoxelRush.Destruction
             }
         }
 
-        public static MaterialCatalog Default { get; } = new MaterialCatalog(new[]
+        public static MaterialCatalog Default { get; } = new MaterialCatalog(WithRamps(new[]
         {
             // GAMEPLAY_RULES: dirt 30, grass 35, wood 50, asphalt 100, stone 120, reinforced 300, protected infinite.
             new BlockMaterial(BlockIds.Grass, "Grass", 35, opaque: true, buildable: true),
@@ -81,7 +81,23 @@ namespace VoxelRush.Destruction
             new BlockMaterial(BlockIds.Glass, "Glass", 20, opaque: false, buildable: true),
             new BlockMaterial(BlockIds.Sand, "Sand", 25, true, true),
             new BlockMaterial(BlockIds.Metal, "Metal", 200, true, true),
-        });
+        }));
+
+        // BUILD-002 placeholders: concrete-like ramps, one entry per yaw so HP never depends on orientation.
+        private static IEnumerable<BlockMaterial> WithRamps(IEnumerable<BlockMaterial> blocks)
+        {
+            foreach (BlockMaterial block in blocks)
+            {
+                yield return block;
+            }
+
+            for (int yaw = 0; yaw < BlockShapes.Yaws; yaw++)
+            {
+                yield return new BlockMaterial(BlockShapes.RampId(BlockShape.RampLow, yaw), "Low ramp", 60, true, true);
+                yield return new BlockMaterial(BlockShapes.RampId(BlockShape.RampHigh, yaw), "High ramp", 100, true, true);
+                yield return new BlockMaterial(BlockShapes.RampId(BlockShape.Kicker, yaw), "Kicker", 80, true, true);
+            }
+        }
 
         public int Count { get; }
 

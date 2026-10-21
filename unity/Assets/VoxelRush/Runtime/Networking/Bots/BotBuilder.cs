@@ -13,12 +13,14 @@ namespace VoxelRush.Networking.Bots
     /// Headless builder (<c>-botBuild N</c>): once the world is synced, places then removes blocks behind its own car,
     /// one edit at a time (waits for each durable result), N edits in total. <c>-botTower H</c> instead stacks an
     /// H-block tower behind the car and then removes its bottom block, so the server must collapse the rest.
+    /// <c>-botBlock ID</c> places that block id instead of stone (e.g. a ramp; the server still validates it).
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class BotBuilder : MonoBehaviour
     {
         public const string BuildArgument = "-botBuild";
         public const string TowerArgument = "-botTower";
+        public const string BlockArgument = "-botBlock";
 
         private int _target;
         private int _done;
@@ -27,6 +29,7 @@ namespace VoxelRush.Networking.Bots
         private float _nextAt;
         private int _tower;
         private BlockPos? _towerBase;
+        private byte _block = BlockIds.Stone;
 
         public static WorldSyncClient? World { get; set; }
 
@@ -46,6 +49,12 @@ namespace VoxelRush.Networking.Bots
             {
                 _tower = Mathf.Clamp(h, 2, 5);
                 _target = _tower + 1;
+            }
+
+            int b = Array.IndexOf(args, BlockArgument);
+            if (b >= 0 && b + 1 < args.Length && byte.TryParse(args[b + 1], out byte block))
+            {
+                _block = block;
             }
         }
 
@@ -84,7 +93,7 @@ namespace VoxelRush.Networking.Bots
 
             ChunkCoord chunk = ChunkMath.ToChunk(target);
             _waiting = true;
-            World.SendEdit(chunk, ChunkMath.ToLocal(target).Index, action, BlockIds.Stone, (rejection, revision) =>
+            World.SendEdit(chunk, ChunkMath.ToLocal(target).Index, action, _block, (rejection, revision) =>
             {
                 _waiting = false;
                 _done++;

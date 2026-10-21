@@ -22,7 +22,7 @@ namespace VoxelRush.Tests.EditMode
     {
         private static readonly TerrainGenerator Generator = new TerrainGenerator(12345);
 
-        private static List<(ChunkData Chunk, ChunkData?[] Neighbours)> Fixture(int radius = 2)
+        private static List<(ChunkData Chunk, ChunkData?[] Neighbours)> Fixture(int radius = 2, bool ramps = false)
         {
             var list = new List<(ChunkData, ChunkData?[])>();
             for (int x = -radius; x <= radius; x++)
@@ -38,11 +38,25 @@ namespace VoxelRush.Tests.EditMode
                             chunk.Set(LocalBlock.FromIndex((i * 997 + x * 31 + z * 17 + 4096 * 8) % 4096), i % 3 == 0 ? BlockIds.Stone : BlockIds.Air);
                         }
 
-                        list.Add((chunk, new ChunkData?[]
+                        var neighbours = new ChunkData?[]
                         {
                             Generator.Generate(c.Offset(1, 0, 0)), Generator.Generate(c.Offset(-1, 0, 0)), Generator.Generate(c.Offset(0, 1, 0)),
                             null, Generator.Generate(c.Offset(0, 0, 1)), Generator.Generate(c.Offset(0, 0, -1)),
-                        }));
+                        };
+                        if (ramps)
+                        {
+                            // Ramps of every id, many on chunk borders, also in the neighbours' touching layers.
+                            AddRamps(chunk, x * 7 + z * 3 + y);
+                            foreach (ChunkData? n in neighbours)
+                            {
+                                if (n != null)
+                                {
+                                    AddRamps(n, x * 5 + z + y * 11);
+                                }
+                            }
+                        }
+
+                        list.Add((chunk, neighbours));
                     }
                 }
             }
@@ -50,14 +64,37 @@ namespace VoxelRush.Tests.EditMode
             return list;
         }
 
+        private static void AddRamps(ChunkData chunk, int seed)
+        {
+            for (int i = 0; i < 400; i++)
+            {
+                int h = (i * 2654435 + seed * 40503) & 0x7FFFFFFF;
+                int x = i % 2 == 0 ? (h % 2) * 15 : h % 16;
+                var local = new LocalBlock(x, (h >> 4) % 16, (h >> 8) % 16);
+                chunk.Set(local, (byte)(BlockIds.FirstRamp + (h >> 12) % (BlockIds.LastRamp - BlockIds.FirstRamp + 1)));
+            }
+        }
+
         [Test]
         public void BurstMesher_ProducesExactlyTheManagedMesh()
+        {
+            Assert.That(CompareMeshers(Fixture()), Is.GreaterThan(2000), "fixture actually meshes something");
+        }
+
+        [Test]
+        public void BurstMesher_ProducesExactlyTheManagedMesh_WithRamps()
+        {
+            Assert.That(CompareMeshers(Fixture(1, ramps: true)), Is.GreaterThan(2000), "fixture actually meshes ramps");
+        }
+
+        // Returns the number of triangles compared.
+        private static int CompareMeshers(List<(ChunkData Chunk, ChunkData?[] Neighbours)> fixture)
         {
             var managed = new ChunkMesher(BlockAtlas.Default);
             var expected = new ChunkMeshData();
             using var burst = new BurstChunkMesher(BlockAtlas.Default);
-            int quads = 0;
-            foreach ((ChunkData chunk, ChunkData?[] neighbours) in Fixture())
+            int triangles = 0;
+            foreach ((ChunkData chunk, ChunkData?[] neighbours) in fixture)
             {
                 managed.Build(chunk, neighbours, expected);
                 burst.Build(chunk, neighbours);
@@ -67,10 +104,10 @@ namespace VoxelRush.Tests.EditMode
                 Assert.That(burst.Normals.ToArray(Allocator.Temp).ToArray().SelectMany(p => new[] { p.x, p.y, p.z }), Is.EqualTo(expected.Normals));
                 Assert.That(burst.Uvs.ToArray(Allocator.Temp).ToArray().SelectMany(p => new[] { p.x, p.y }), Is.EqualTo(expected.Uvs));
                 Assert.That(burst.TileIds.ToArray(Allocator.Temp).ToArray(), Is.EqualTo(expected.Tiles));
-                quads += expected.QuadCount;
+                triangles += expected.TriangleCount;
             }
 
-            Assert.That(quads, Is.GreaterThan(1000), "fixture actually meshes something");
+            return triangles;
         }
 
         [Test]

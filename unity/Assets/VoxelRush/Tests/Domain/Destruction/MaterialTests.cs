@@ -33,10 +33,10 @@ namespace VoxelRush.Tests.Domain.Destruction
         }
 
         [Test]
-        public void Catalog_HasTwelveBlockTypes_AllNamedWithPositiveHp()
+        public void Catalog_HasTwelveBlockTypesAndThreeRampsInFourYaws_AllNamedWithPositiveHp()
         {
-            Assert.That(Catalog.Count, Is.EqualTo(12), "MVP: 12 block types");
-            for (byte id = 1; id <= 12; id++)
+            Assert.That(Catalog.Count, Is.EqualTo(12 + 3 * 4), "MVP: 12 block types, 3 ramp variants");
+            for (byte id = 1; id < BlockIds.Count; id++)
             {
                 BlockMaterial m = Catalog.Get(id);
                 Assert.That(m.Name, Is.Not.Empty);
@@ -55,6 +55,28 @@ namespace VoxelRush.Tests.Domain.Destruction
             Assert.Throws<ArgumentException>(() => new MaterialCatalog(new[] { new BlockMaterial(BlockIds.Air, "Air", 10, true, true) }));
             Assert.Throws<ArgumentException>(() => new MaterialCatalog(new[] { new BlockMaterial(5, "Zero", 0, true, true) }));
             Assert.Throws<KeyNotFoundException>(() => Catalog.Get(99));
+        }
+
+        [Test]
+        public void Catalog_BuildableMatchesTheEditRules_ForEveryId()
+        {
+            for (int id = 0; id < 256; id++)
+            {
+                bool buildable = Catalog.TryGet((byte)id, out BlockMaterial m) && m.Buildable;
+                Assert.That(BlockShapes.IsPlaceable((byte)id), Is.EqualTo(buildable), $"id {id}");
+            }
+        }
+
+        [Test]
+        public void RampHp_DoesNotDependOnYaw()
+        {
+            for (int yaw = 1; yaw < BlockShapes.Yaws; yaw++)
+            {
+                foreach (BlockShape shape in new[] { BlockShape.RampLow, BlockShape.RampHigh, BlockShape.Kicker })
+                {
+                    Assert.That(Catalog.Get(BlockShapes.RampId(shape, yaw)).MaxHp, Is.EqualTo(Catalog.Get(BlockShapes.RampId(shape, 0)).MaxHp));
+                }
+            }
         }
     }
 
