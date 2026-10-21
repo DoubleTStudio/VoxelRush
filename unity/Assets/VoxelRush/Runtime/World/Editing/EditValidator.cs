@@ -8,6 +8,8 @@ namespace VoxelRush.World.Editing
     {
         Place = 0,
         Remove = 1,
+        /// <summary>Reserved by CONTRACTS; rejected until blocks carry orientation.</summary>
+        Rotate = 2,
     }
 
     /// <summary>Why an edit is refused (GAMEPLAY_RULES Building). Stable codes for logs, wire and UI.</summary>
@@ -22,6 +24,11 @@ namespace VoxelRush.World.Editing
         ChunkNotLoaded,
         RateLimited,
         InvalidBlockType,
+        StaleRevision,
+        InvalidRevision,
+        InvalidIndex,
+        UnsupportedAction,
+        ServerBusy,
     }
 
     /// <summary>Axis-aligned box in world block units (min inclusive, max exclusive).</summary>
@@ -144,6 +151,11 @@ namespace VoxelRush.World.Editing
             EditRejection.ChunkNotLoaded => "Area still loading",
             EditRejection.RateLimited => "Building too fast. Wait a moment",
             EditRejection.InvalidBlockType => "Pick a block to place",
+            EditRejection.StaleRevision => "Someone changed that block first",
+            EditRejection.InvalidRevision => "Out of sync. Reloading area",
+            EditRejection.InvalidIndex => "Invalid target",
+            EditRejection.UnsupportedAction => "Not available yet",
+            EditRejection.ServerBusy => "Server busy. Try again",
             _ => throw new ArgumentOutOfRangeException(nameof(rejection)),
         };
 
@@ -158,6 +170,11 @@ namespace VoxelRush.World.Editing
             EditRejection.ChunkNotLoaded => "chunk_not_loaded",
             EditRejection.RateLimited => "rate_limited",
             EditRejection.InvalidBlockType => "invalid_block_type",
+            EditRejection.StaleRevision => "stale_revision",
+            EditRejection.InvalidRevision => "invalid_revision",
+            EditRejection.InvalidIndex => "invalid_index",
+            EditRejection.UnsupportedAction => "unsupported_action",
+            EditRejection.ServerBusy => "server_busy",
             _ => throw new ArgumentOutOfRangeException(nameof(rejection)),
         };
     }
