@@ -148,7 +148,9 @@ jobs:
       - name: World sync test (builders, late join, restart)
         run: tools/smoke-world.sh docker
       # VR-062 DoD: 8-player race flow (lobby auto-start, validated gates, reconnect, identical results on every client).
-      - name: Race flow test (8 racers)
+      - name: Race flow test (8 racers on main, 4 on PRs)
+        env:
+          RACE_BOTS: ${{ env.BUILD_IOS == 'true' && '8' || '4' }}
         run: tools/smoke-race.sh docker
       # VR-080: API-issued join tickets admitted by a ticket-only server; replayed/forged/missing tickets refused.
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
