@@ -75,7 +75,7 @@ code=0; wait "$SERVER_PID" || code=$?; [[ $code -eq 0 ]] || fail "server exit $c
 for owner in $(grep "event=vehicle_spawned " "$LOGS/server.log" | sed -nE 's/.*ownerClientId=([0-9]+).*/\1/p'); do
   line=$(grep "event=vehicle_server_stats ownerClientId=$owner " "$LOGS/server.log" | tail -1)
   [[ -n "$line" ]] || fail "no server stats for client $owner"
-  dist=$(sed -nE 's/.* distance=([^ ]+).*/\1/p' <<<"$line"); speed=$(sed -nE 's/.* maxSpeed=([^ ]+).*/\1/p' <<<"$line")
+  dist=$(sed -nE 's/.* pathLength=([^ ]+).*/\1/p' <<<"$line"); speed=$(sed -nE 's/.* maxSpeed=([^ ]+).*/\1/p' <<<"$line")
   check "client $owner car did not move under its input" "$dist" "v > 50"
   check "client $owner exceeded top speed" "$speed" "v <= 29.5"
 done
