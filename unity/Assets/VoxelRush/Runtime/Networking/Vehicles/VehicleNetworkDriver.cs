@@ -348,6 +348,8 @@ namespace VoxelRush.Networking.Vehicles
             Vector3 v = _vehicle.Body.linearVelocity;
             float speed = new Vector2(v.x, v.z).magnitude;
             _stats.MaxSpeed = Mathf.Max(_stats.MaxSpeed, speed);
+            // Driven distance; displacement alone undercounts a car that weaves back toward its start.
+            _stats.PathLength += speed * NetworkSimulation.Instance.TickSeconds;
         }
 
         private void ConfigureConditions()
@@ -385,6 +387,7 @@ namespace VoxelRush.Networking.Vehicles
                     Debug.Log(LogEvent.Format("vehicle_server_stats",
                         ("ownerClientId", OwnerClientId),
                         ("distance", Vector3.Distance(_stats.StartPosition, transform.position)),
+                        ("pathLength", _stats.PathLength),
                         ("maxSpeed", _stats.MaxSpeed),
                         ("lastProcessedInput", _serverQueue!.LastProcessed),
                         ("rejectedMalformed", _stats.RejectedMalformed),
@@ -416,6 +419,7 @@ namespace VoxelRush.Networking.Vehicles
         {
             public Vector3 StartPosition;
             public float MaxSpeed;
+            public float PathLength;
             public long RejectedMalformed;
             public long RejectedOther;
             public long RejectedSpoofed;

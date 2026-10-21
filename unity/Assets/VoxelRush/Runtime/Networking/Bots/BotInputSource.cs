@@ -52,8 +52,8 @@ namespace VoxelRush.Networking.Bots
                 _reconnectAfter = gate;
             }
 
-            // Different bots weave out of phase so they spread over the arena.
-            _phase = (System.Diagnostics.Process.GetCurrentProcess().Id % 7) * 0.9f;
+            // Different bots weave out of phase so they spread over the arena (process ids repeat across containers).
+            _phase = (Guid.NewGuid().GetHashCode() & 0x7fffffff) % 7 * 0.9f;
         }
 
         private void Update()
