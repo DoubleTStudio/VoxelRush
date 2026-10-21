@@ -23,8 +23,9 @@ namespace VoxelRush.Networking.Vehicles
         private const int PredictionRing = 128;
         private const float BlendFactor = 0.5f;
         private const double StatsIntervalSeconds = 5;
-        // A hostile client is cut off after this many out-of-contract or abusive input commands.
-        private const long MaxRejectedInputs = 600;
+        // A hostile client is cut off after this many out-of-contract commands. Lag-induced rejections (too far
+        // ahead, queue full, rate limited) don't count: a slow server must not kick honest clients (VR-062 CI).
+        private const long MaxMalformedInputs = 600;
 
         private readonly CorrectionPolicy _policy = new CorrectionPolicy();
         private readonly List<InputCommand> _batchScratch = new List<InputCommand>(RedundantInputs);
@@ -185,9 +186,9 @@ namespace VoxelRush.Networking.Vehicles
                 }
             }
 
-            if (_serverQueue!.Rejected > MaxRejectedInputs)
+            if (_stats.RejectedMalformed > MaxMalformedInputs)
             {
-                Debug.LogWarning(LogEvent.Format("vehicle_input_abuse_disconnect", ("ownerClientId", OwnerClientId), ("rejected", _serverQueue.Rejected)));
+                Debug.LogWarning(LogEvent.Format("vehicle_input_abuse_disconnect", ("ownerClientId", OwnerClientId), ("malformed", _stats.RejectedMalformed)));
                 NetworkManager.DisconnectClient(OwnerClientId, "input_abuse");
             }
         }
