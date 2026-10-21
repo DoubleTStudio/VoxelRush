@@ -54,6 +54,9 @@ namespace VoxelRush.Networking
 
         public bool IsConnected => _network != null && _network.IsConnected;
 
+        /// <summary>The synced world while connected (rendered by the client scene).</summary>
+        public WorldSyncClient? World => _world;
+
         /// <summary>The scene's bootstrap (one per client/bot process).</summary>
         public static ClientBootstrap? Instance { get; private set; }
 

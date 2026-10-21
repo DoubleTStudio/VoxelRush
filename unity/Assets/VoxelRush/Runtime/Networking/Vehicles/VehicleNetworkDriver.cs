@@ -92,6 +92,7 @@ namespace VoxelRush.Networking.Vehicles
                 _source = FindInputSource();
                 ConfigureConditions();
                 NetworkSimulation.Instance.Register(this);
+                LocalPlayer.Vehicle = _vehicle;
                 Debug.Log(LogEvent.Format("vehicle_owned", ("networkObjectId", NetworkObjectId), ("inputSource", _source?.GetType().Name ?? "none")));
             }
             else
@@ -109,6 +110,11 @@ namespace VoxelRush.Networking.Vehicles
             if (_role == Role.Server && s_byOwner.TryGetValue(OwnerClientId, out VehicleNetworkDriver? mine) && mine == this)
             {
                 s_byOwner.Remove(OwnerClientId);
+            }
+
+            if (_role == Role.Owner && LocalPlayer.Vehicle == _vehicle)
+            {
+                LocalPlayer.Vehicle = null;
             }
 
             LogStats();
