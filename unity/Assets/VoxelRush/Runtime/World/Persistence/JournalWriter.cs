@@ -14,7 +14,7 @@ namespace VoxelRush.World.Persistence
     /// </summary>
     public sealed class JournalWriter : IDisposable, IMutationSink
     {
-        private readonly FileStream _file;
+        private readonly Stream _file;
         private readonly BlockingCollection<ChunkMutationBatch> _queue;
         private readonly ConcurrentQueue<ChunkMutationBatch> _durable = new ConcurrentQueue<ChunkMutationBatch>();
         private readonly Thread _thread;
@@ -24,10 +24,16 @@ namespace VoxelRush.World.Persistence
         private long _pending;
 
         public JournalWriter(string path, int capacity = 1024, int maxGroup = 64)
+            // Exclusive: two writers on one world journal would interleave records (ADR-010 single writer).
+            : this(new FileStream(path, FileMode.OpenOrCreate, FileAccess.Write, FileShare.Read, 4096, FileOptions.WriteThrough), path, capacity, maxGroup)
+        {
+        }
+
+        /// <summary>Over any stream; tests inject failing streams (disk full, fsync errors).</summary>
+        internal JournalWriter(Stream file, string path, int capacity = 1024, int maxGroup = 64)
         {
             Path = path;
-            // Exclusive: two writers on one world journal would interleave records (ADR-010 single writer).
-            _file = new FileStream(path, FileMode.OpenOrCreate, FileAccess.Write, FileShare.Read, 4096, FileOptions.WriteThrough);
+            _file = file;
             _file.Seek(0, SeekOrigin.End);
             _queue = new BlockingCollection<ChunkMutationBatch>(capacity);
             _capacity = capacity;
@@ -120,7 +126,14 @@ namespace VoxelRush.World.Persistence
                     }
 
                     // One fsync per group (group commit); nothing is reported durable before it returns.
-                    _file.Flush(flushToDisk: true);
+                    if (_file is FileStream fs)
+                    {
+                        fs.Flush(flushToDisk: true);
+                    }
+                    else
+                    {
+                        _file.Flush();
+                    }
                     foreach (ChunkMutationBatch batch in group)
                     {
                         _durable.Enqueue(batch);

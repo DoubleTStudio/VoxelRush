@@ -1,0 +1,8 @@
+# Secret scanning (QUALITY_GATES "no leaked secrets"). Default rules, plus an allowlist for fixed dummy values that
+# only exist in tests against throwaway containers. Never add real or production-shaped values here.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Test-only dummy credentials"
+regexes = ['''voxelrush-test-secret-0123456789''']
