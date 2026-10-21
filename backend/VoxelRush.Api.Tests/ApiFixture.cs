@@ -80,6 +80,9 @@ public sealed class ApiHost : IAsyncDisposable
     /// <summary>This host's own database (tests may inspect stored rows).</summary>
     public string ConnectionString { get; }
 
+    /// <summary>The host's container, to check which implementations configuration selected.</summary>
+    public IServiceProvider Services => _factory.Services;
+
     /// <param name="extra">More VoxelRush__* settings for this host.</param>
     /// <param name="services">Service overrides, e.g. fake store endpoints behind named HttpClients.</param>
     public static async Task<ApiHost> StartAsync(int authPerMinute = 10_000, int playerPerMinute = 10_000, bool storage = true,
