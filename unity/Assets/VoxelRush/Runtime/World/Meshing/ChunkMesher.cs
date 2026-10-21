@@ -4,9 +4,10 @@ using VoxelRush.World.Chunks;
 namespace VoxelRush.World.Meshing
 {
     /// <summary>
-    /// Greedy mesher (VOXEL_ENGINE Meshing): culls faces hidden by opaque neighbours (reading one block past each
-    /// chunk border from the face neighbours; missing neighbours count as air) and merges coplanar faces with the same
-    /// atlas tile into maximal rectangles. Engine-free output; reusable buffers, no allocation per call after warm-up (tested).
+    /// Greedy mesher (VOXEL_ENGINE Meshing): culls faces hidden by full neighbour faces (reading one block past each
+    /// chunk border from the face neighbours; missing neighbours count as air) and merges coplanar full faces with the
+    /// same atlas tile into maximal rectangles. Ramp slopes and partial faces follow per cell (<see cref="BlockGeometry"/>).
+    /// Engine-free output; reusable buffers, no allocation per call after warm-up (tested).
     /// </summary>
     public sealed class ChunkMesher
     {
@@ -37,7 +38,42 @@ namespace VoxelRush.World.Meshing
             {
                 BuildDirection(direction, output);
             }
+
+            BuildPartialFaces(output);
         }
+
+        // Same cell order and culling as the Burst job: y, then z, then x.
+        private void BuildPartialFaces(ChunkMeshData output)
+        {
+            for (int y = 0; y < S; y++)
+            {
+                for (int z = 0; z < S; z++)
+                {
+                    for (int x = 0; x < S; x++)
+                    {
+                        byte block = Padded(x, y, z);
+                        int end = BlockGeometry.TemplateEnd(block);
+                        for (int t = BlockGeometry.TemplateStart(block); t < end; t++)
+                        {
+                            int dir = BlockGeometry.TemplateDirection(t);
+                            if (dir != BlockGeometry.Inside)
+                            {
+                                byte neighbour = Padded(x + Step(dir, 0), y + Step(dir, 1), z + Step(dir, 2));
+                                if (BlockGeometry.IsHidden(BlockGeometry.TemplateProfile(t), BlockGeometry.Profile(neighbour, dir ^ 1)))
+                                {
+                                    continue;
+                                }
+                            }
+
+                            output.AddTemplate(t, x, y, z, _atlas.Tile(block, BlockGeometry.TemplateFace(t)));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Unit step of a direction (+X, -X, +Y, -Y, +Z, -Z) along an axis.
+        private static int Step(int direction, int axis) => direction / 2 == axis ? (direction % 2 == 0 ? 1 : -1) : 0;
 
         private void BuildDirection(int direction, ChunkMeshData output)
         {
@@ -64,7 +100,8 @@ namespace VoxelRush.World.Meshing
                         q[2] = p[2];
                         q[d] += sign;
                         byte block = Padded(p[0], p[1], p[2]);
-                        bool visible = _atlas.IsOpaque(block) && !_atlas.IsOpaque(Padded(q[0], q[1], q[2]));
+                        bool visible = BlockGeometry.Profile(block, direction) == BlockGeometry.FullFace
+                            && BlockGeometry.Profile(Padded(q[0], q[1], q[2]), direction ^ 1) != BlockGeometry.FullFace;
                         _mask[i + j * S] = visible ? _atlas.Tile(block, face) + 1 : 0;
                     }
                 }

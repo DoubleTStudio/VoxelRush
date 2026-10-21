@@ -19,7 +19,10 @@ namespace VoxelRush.World.Meshing
 
         public List<int> Indices { get; } = new List<int>();
 
+        /// <summary>Quads of a cube-only mesh (ramp triangles count as half a quad).</summary>
         public int QuadCount => Indices.Count / 6;
+
+        public int TriangleCount => Indices.Count / 3;
 
         public int VertexCount => Positions.Count / 3;
 
@@ -70,6 +73,31 @@ namespace VoxelRush.World.Meshing
             {
                 Indices.Add(start); Indices.Add(start + 2); Indices.Add(start + 1);
                 Indices.Add(start); Indices.Add(start + 3); Indices.Add(start + 2);
+            }
+        }
+
+        /// <summary>Appends a <see cref="BlockGeometry"/> template (ramp slope or partial face) at a cell.</summary>
+        internal void AddTemplate(int template, int x, int y, int z, int tile)
+        {
+            int start = VertexCount;
+            int count = BlockGeometry.TemplateVertexCount(template);
+            for (int corner = 0; corner < count; corner++)
+            {
+                Positions.Add(x + BlockGeometry.TemplatePosition(template, corner, 0));
+                Positions.Add(y + BlockGeometry.TemplatePosition(template, corner, 1));
+                Positions.Add(z + BlockGeometry.TemplatePosition(template, corner, 2));
+                Normals.Add(BlockGeometry.TemplateNormal(template, 0));
+                Normals.Add(BlockGeometry.TemplateNormal(template, 1));
+                Normals.Add(BlockGeometry.TemplateNormal(template, 2));
+                Uvs.Add(BlockGeometry.TemplateUv(template, corner, 0));
+                Uvs.Add(BlockGeometry.TemplateUv(template, corner, 1));
+                Tiles.Add(tile);
+            }
+
+            Indices.Add(start); Indices.Add(start + 1); Indices.Add(start + 2);
+            if (count == 4)
+            {
+                Indices.Add(start); Indices.Add(start + 2); Indices.Add(start + 3);
             }
         }
 

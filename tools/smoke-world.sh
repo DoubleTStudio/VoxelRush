@@ -3,14 +3,14 @@
 # Phase 1: server + two concurrent builder bots A1/A2 (30 durable edits each, adjacent rows crossing a chunk border)
 #          + tower bot T (stacks 5 blocks, cuts the base; DES-011: the server collapses the other 4)
 #          + late-joining bot B. Phase 2: restart server on the same world dir, bot C joins.
-# Usage: tools/smoke-world.sh native|docker
+# Usage: [SMOKE_PORT=7777] tools/smoke-world.sh native|docker
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MODE="${1:-native}"
 LOGS="$ROOT/artifacts/smoke-world"
 WORLD="$LOGS/world"
-PORT=7777
+PORT="${SMOKE_PORT:-7777}"
 EDITS=30
 IMAGE="voxelrush-server:smoke"
 NETWORK="voxelrush-world"
@@ -67,7 +67,8 @@ fi
 echo "== phase 1: builder edits, late joiner syncs"
 start_server "$LOGS/server1.log" 1500
 start_bot "$LOGS/botA.log" -botBuild "$EDITS" -smokeTestSeconds 25; A=$BOT_PID
-start_bot "$LOGS/botA2.log" -botBuild "$EDITS" -smokeTestSeconds 25; A2=$BOT_PID
+# A2 builds ramps (BUILD-002: id 13 = low ramp climbing +Z), so ramp ids cross validation, journal, deltas and restart.
+start_bot "$LOGS/botA2.log" -botBuild "$EDITS" -botBlock 13 -smokeTestSeconds 25; A2=$BOT_PID
 start_bot "$LOGS/botT.log" -botTower 5 -smokeTestSeconds 25; T=$BOT_PID
 for log in botA botA2; do
   for _ in $(seq 1 120); do grep -q "event=bot_build_done" "$LOGS/$log.log" 2>/dev/null && break; sleep 0.5; done

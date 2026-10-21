@@ -18,9 +18,6 @@ namespace VoxelRush.World.Meshing
 
         public static BlockAtlas Default { get; } = CreateDefault();
 
-        /// <summary>Whether a block hides the faces of its neighbours (air and future glass/water don't).</summary>
-        public bool IsOpaque(byte blockId) => blockId != Chunks.BlockIds.Air;
-
         public int Tile(byte blockId, BlockFace face) => _tiles[blockId * 3 + (int)face];
 
         public BlockAtlas Set(byte blockId, int top, int side, int bottom)
@@ -37,9 +34,19 @@ namespace VoxelRush.World.Meshing
         }
 
         // Tiles: 0 grass top, 1 grass side, 2 dirt, 3 stone (atlas texture lays them out row-major from the top-left).
-        private static BlockAtlas CreateDefault() => new BlockAtlas()
-            .Set(Chunks.BlockIds.Grass, top: 0, side: 1, bottom: 2)
-            .Set(Chunks.BlockIds.Dirt, 2, 2, 2)
-            .Set(Chunks.BlockIds.Stone, 3, 3, 3);
+        private static BlockAtlas CreateDefault()
+        {
+            BlockAtlas atlas = new BlockAtlas()
+                .Set(Chunks.BlockIds.Grass, top: 0, side: 1, bottom: 2)
+                .Set(Chunks.BlockIds.Dirt, 2, 2, 2)
+                .Set(Chunks.BlockIds.Stone, 3, 3, 3);
+            // Ramps read as stone until they get their own tiles.
+            for (int id = Chunks.BlockIds.FirstRamp; id <= Chunks.BlockIds.LastRamp; id++)
+            {
+                atlas.Set((byte)id, 3, 3, 3);
+            }
+
+            return atlas;
+        }
     }
 }

@@ -58,6 +58,7 @@ Platform settings are code: edit `unity/Assets/VoxelRush/Editor/ProjectConfigura
 
 ## Controls
 Landscape touch HUD (`Client.unity` → `TouchHud`): ◀ ▶ steer bottom-left; GAS, BRAKE, BOOST, DRIFT (handbrake) bottom-right; BUILD top centre; all inside the device safe area.
+Build mode (BUILD cycles place → remove → off): tap the world to put a ghost there (green, or red with the reason), then PLACE/REMOVE or tap the ghost again; ROTATE turns ramps 90°, CANCEL drops the aim (desktop: R, Enter, Esc). The palette has six blocks and three ramps (low + high = a two-block 1:2 ramp; kicker = jump lip), see ADR-020.
 The `Driving` action map is defined in code (`Presentation/Input/DrivingControls.cs`); touch buttons emulate a virtual gamepad, so touch, gamepad (stick/triggers/face buttons) and keyboard (WASD/arrows, Shift boost, Space drift, B build) share one map.
 
 ## Dedicated server
@@ -76,7 +77,7 @@ docker compose -f docker/compose.yaml up --build
 
 ## Networked driving
 The server spawns one car per player on the shared `Arena`; physics ticks at 30 Hz. Owners predict and reconcile; other cars are interpolated (`docs/adr/ADR-015-authoritative-vehicle-netcode.md`).
-Development builds accept `-simRttMs N [-simJitterMs J] [-simLossPercent L]` to simulate network conditions for gameplay messages. Bots accept `-botDrive` (scripted driving), `-botCheat` (sends speed-hack inputs the server must reject) and `-botPaint <sku>` (asks to show a paint; the server checks ownership).
+Development builds accept `-simRttMs N [-simJitterMs J] [-simLossPercent L]` to simulate network conditions for gameplay messages. Bots accept `-botDrive` (scripted driving), `-botCheat` (sends speed-hack inputs the server must reject), `-botPaint <sku>` (asks to show a paint; the server checks ownership) and `-botBlock <id>` (builder bots place that block id, e.g. 13 = low ramp).
 
 ## Test client and bots
 Clients connect with `-connect host:port [-smokeTestSeconds N]` (exit `0` stayed connected, `3` connect failed or rejected).

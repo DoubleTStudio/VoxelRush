@@ -19,6 +19,16 @@ namespace VoxelRush.World.Chunks
         public const byte Glass = 10;
         public const byte Sand = 11;
         public const byte Metal = 12;
+
+        // BUILD-002 ramps: FirstRamp + variant * 4 + yaw (see BlockShapes); ids above stay unchanged.
+        public const byte FirstRamp = 13;
+        public const byte RampLow = 13;
+        public const byte RampHigh = 17;
+        public const byte Kicker = 21;
+        public const byte LastRamp = 24;
+
+        /// <summary>Ids 0..Count-1 are defined; anything above is unknown and never placeable.</summary>
+        public const int Count = 25;
     }
 
     /// <summary>

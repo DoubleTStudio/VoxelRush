@@ -8,7 +8,7 @@ namespace VoxelRush.World.Editing
     {
         Place = 0,
         Remove = 1,
-        /// <summary>Reserved by CONTRACTS; rejected until blocks carry orientation.</summary>
+        /// <summary>Reserved by CONTRACTS; still rejected: ramp yaw is part of the block id, so a turned ramp is placed as its own id.</summary>
         Rotate = 2,
     }
 
@@ -97,7 +97,8 @@ namespace VoxelRush.World.Editing
             float actorEyeX, float actorEyeY, float actorEyeZ,
             IEditWorld world, IReadOnlyList<WorldBox> occupants, WorldRole role = WorldRole.Owner)
         {
-            if (action == EditAction.Place && blockType == BlockIds.Air)
+            // Unknown ids and world-authored protected blocks are never player-placeable (BUILD-002 tightened from air-only).
+            if (action == EditAction.Place && !BlockShapes.IsPlaceable(blockType))
             {
                 return EditRejection.InvalidBlockType;
             }
