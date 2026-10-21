@@ -28,7 +28,8 @@ public sealed class ManualClock : TimeProvider
 public sealed class Containers
 {
     public const string S3AccessKey = "voxelrush-test";
-    public const string S3SecretKey = "voxelrush-test-secret-0123456789";
+    // Dummy credential for the throwaway test container only.
+    public const string S3SecretKey = "voxelrush-test-secret-0123456789"; // gitleaks:allow
 
     public static PostgreSqlContainer Postgres { get; private set; } = null!;
 

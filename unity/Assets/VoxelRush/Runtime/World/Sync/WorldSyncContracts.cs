@@ -89,10 +89,21 @@ namespace VoxelRush.World.Sync
             return stream.ToArray();
         }
 
+        /// <summary>Bounds-checked decode of untrusted bytes; throws only <see cref="InvalidDataException"/>.</summary>
         public static WorldInfo Decode(byte[] bytes)
         {
-            using var r = new BinaryReader(new MemoryStream(bytes));
-            var info = new WorldInfo(new Guid(r.ReadBytes(16)), (GeneratorKind)r.ReadByte(), r.ReadInt64(), r.ReadInt32(), r.ReadInt32(), ReadCoord(r), ReadCoord(r));
+            WorldInfo info;
+            try
+            {
+                using var r = new BinaryReader(new MemoryStream(bytes));
+                info = new WorldInfo(new Guid(r.ReadBytes(16)), (GeneratorKind)r.ReadByte(), r.ReadInt64(), r.ReadInt32(), r.ReadInt32(), ReadCoord(r), ReadCoord(r));
+            }
+            catch (Exception e) when (e is EndOfStreamException || e is ArgumentException)
+            {
+                // Truncated input (found by DecoderFuzzTests): callers only handle InvalidDataException.
+                throw new InvalidDataException("Truncated world info.", e);
+            }
+
             long volume = (long)(info.RegionMax.X - info.RegionMin.X + 1) * (info.RegionMax.Y - info.RegionMin.Y + 1) * (info.RegionMax.Z - info.RegionMin.Z + 1);
             if (volume <= 0 || volume > ChunkSnapshotMessage.MaxRegionChunks)
             {
@@ -163,8 +174,20 @@ namespace VoxelRush.World.Sync
             return stream.ToArray();
         }
 
-        /// <summary>Bounds-checked decode of untrusted bytes.</summary>
+        /// <summary>Bounds-checked decode of untrusted bytes; throws only <see cref="InvalidDataException"/>.</summary>
         public static ChunkSnapshotMessage Decode(byte[] bytes)
+        {
+            try
+            {
+                return DecodeUnchecked(bytes);
+            }
+            catch (EndOfStreamException e)
+            {
+                throw new InvalidDataException("Truncated chunk snapshot.", e);
+            }
+        }
+
+        private static ChunkSnapshotMessage DecodeUnchecked(byte[] bytes)
         {
             using var r = new BinaryReader(new MemoryStream(bytes));
             ChunkCoord coord = WorldInfo.ReadCoord(r);

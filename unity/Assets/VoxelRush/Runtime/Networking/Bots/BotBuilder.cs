@@ -92,6 +92,8 @@ namespace VoxelRush.Networking.Bots
                 if (rejection == EditRejection.None)
                 {
                     _accepted++;
+                    // Acknowledged = durable on the server; crash tests check no acked revision is lost.
+                    Debug.Log(LogEvent.Format("bot_edit_ack", ("chunk", $"{chunk.X},{chunk.Y},{chunk.Z}"), ("revision", revision)));
                 }
                 else
                 {

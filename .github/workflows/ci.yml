@@ -20,6 +20,11 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      # QUALITY_GATES "no leaked secrets": scan the full history, findings redacted.
+      - name: Secret scan (gitleaks)
+        run: docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.24.3 git /repo --redact --no-banner
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
@@ -164,6 +169,10 @@ jobs:
       - name: Loss test (2% transport loss)
         if: env.BUILD_IOS == 'true'
         run: tools/smoke-loss.sh docker 2
+      # VR-082: 8 players build/cut/collapse while the server is SIGKILLed; no acknowledged edit may be lost. Main/manual only.
+      - name: Destruction stress (8 bots, server crash)
+        if: env.BUILD_IOS == 'true'
+        run: tools/stress-destruction.sh docker
       # VR-013: 8-player load; main/manual only (8 bot processes on the runner).
       - name: Load test (8 bots, 30 Hz tick metrics)
         if: env.BUILD_IOS == 'true'
@@ -204,6 +213,7 @@ jobs:
             artifacts/smoke-race/*.log
             artifacts/smoke-auth/*.log
             artifacts/rollback-drill/
+            artifacts/stress-destruction/*.log
             artifacts/load/
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

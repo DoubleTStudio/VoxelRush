@@ -5,6 +5,12 @@ using VoxelRush.World.Editing;
 
 namespace VoxelRush.Networking.World
 {
+    internal static class EditRejectionLimits
+    {
+        // Highest defined code; unknown codes are refused rather than reaching Describe()/ReasonCode().
+        public const EditRejection Max = EditRejection.StructureSettling;
+    }
+
     /// <summary>Binary layout of EditIntent (client → server) and its result (server → actor).</summary>
     internal static class EditWire
     {
@@ -27,9 +33,18 @@ namespace VoxelRush.Networking.World
             return stream.ToArray();
         }
 
+        // operation id + chunk coord + index + expected revision + action, block, orientation.
+        private const int IntentLength = 16 + 12 + 2 + 8 + 3;
+
         public static bool TryDecodeIntent(byte[] bytes, out EditIntent intent)
         {
             intent = default;
+            // Exact length first: short input made new Guid() throw ArgumentException (VR-082 fuzzing).
+            if (bytes == null || bytes.Length != IntentLength)
+            {
+                return false;
+            }
+
             try
             {
                 using var r = new BinaryReader(new MemoryStream(bytes));
@@ -64,7 +79,7 @@ namespace VoxelRush.Networking.World
             operationId = default;
             rejection = default;
             newRevision = 0;
-            if (bytes.Length != 25)
+            if (bytes == null || bytes.Length != 25 || bytes[16] > (byte)EditRejectionLimits.Max)
             {
                 return false;
             }
