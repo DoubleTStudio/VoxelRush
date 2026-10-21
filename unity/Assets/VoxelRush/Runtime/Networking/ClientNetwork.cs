@@ -38,6 +38,29 @@ namespace VoxelRush.Networking
             }
         }
 
+        public const string JoinTicketArgumentName = "-joinTicket";
+
+        /// <summary>A base64url join ticket from the API (<c>-joinTicket</c>), or null to use the development session.</summary>
+        public static byte[]? JoinTicketArgument(string[] args)
+        {
+            int i = Array.IndexOf(args, JoinTicketArgumentName);
+            if (i < 0 || i + 1 >= args.Length)
+            {
+                return null;
+            }
+
+            string s = args[i + 1].Replace('-', '+').Replace('_', '/');
+            try
+            {
+                byte[] bytes = Convert.FromBase64String(s + new string('=', (4 - s.Length % 4) % 4));
+                return bytes.Length == JoinTicket.Length ? bytes : null;
+            }
+            catch (FormatException)
+            {
+                return null;
+            }
+        }
+
         /// <summary>This process's session id; reused across reconnects so the server can resume the player's race.</summary>
         public static Guid Session { get; } = Guid.NewGuid();
 
@@ -58,7 +81,10 @@ namespace VoxelRush.Networking
             string address = NetworkRuntime.ResolveIPv4(endpoint.Host);
             NetworkManager manager = NetworkRuntime.Create("ClientNetwork");
             NetworkRuntime.Transport(manager).SetConnectionData(address, endpoint.Port);
-            manager.NetworkConfig.ConnectionData = ConnectionPayload.Encode(SimulationConstants.ProtocolVersion, Session);
+            byte[]? ticket = JoinTicketArgument(Environment.GetCommandLineArgs());
+            manager.NetworkConfig.ConnectionData = ticket != null
+                ? ConnectionPayload.EncodeTicket(SimulationConstants.ProtocolVersion, ticket)
+                : ConnectionPayload.Encode(SimulationConstants.ProtocolVersion, Session);
             ConfigureTransportSimulation();
 
             var client = new ClientNetwork(manager);

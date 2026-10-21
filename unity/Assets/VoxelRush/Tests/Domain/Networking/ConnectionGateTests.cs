@@ -7,7 +7,7 @@ namespace VoxelRush.Tests.Domain.Networking
 {
     public sealed class ConnectionGateTests
     {
-        private const ushort Version = 2;
+        private const ushort Version = 3;
 
         // A fresh client session each time.
         private static byte[] ValidPayload => ConnectionPayload.Encode(Version, Guid.NewGuid());
@@ -16,26 +16,38 @@ namespace VoxelRush.Tests.Domain.Networking
         public void Payload_RoundTrips()
         {
             var session = Guid.NewGuid();
-            Assert.That(ConnectionPayload.TryDecode(ConnectionPayload.Encode(0xBEEF, session), out ushort version, out Guid decoded), Is.True);
+            Assert.That(ConnectionPayload.TryDecode(ConnectionPayload.Encode(0xBEEF, session), out ushort version, out PayloadKind kind, out Guid decoded, out byte[]? ticket), Is.True);
             Assert.That(version, Is.EqualTo(0xBEEF));
+            Assert.That(kind, Is.EqualTo(PayloadKind.Session));
             Assert.That(decoded, Is.EqualTo(session));
+            Assert.That(ticket, Is.Null);
+
+            byte[] signed = new JoinTicket(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), WorldAccessRole.Editor, 1, 2).Sign(new byte[32]);
+            Assert.That(ConnectionPayload.TryDecode(ConnectionPayload.EncodeTicket(3, signed), out _, out kind, out _, out ticket), Is.True);
+            Assert.That(kind, Is.EqualTo(PayloadKind.Ticket));
+            Assert.That(ticket, Is.EqualTo(signed));
         }
 
         [TestCase(0)]
         [TestCase(1)]
         [TestCase(3)]
         [TestCase(17)]
-        [TestCase(19)]
+        [TestCase(20)]
+        [TestCase(100)]
+        [TestCase(102)]
         [TestCase(1024)]
         public void Payload_WrongLength_IsMalformed(int length)
         {
-            Assert.That(ConnectionPayload.TryDecode(new byte[length], out _, out _), Is.False);
+            Assert.That(ConnectionPayload.TryDecode(new byte[length], out _, out _, out _, out _), Is.False);
         }
 
         [Test]
-        public void Payload_Null_IsMalformed()
+        public void Payload_Null_OrUnknownKind_IsMalformed()
         {
-            Assert.That(ConnectionPayload.TryDecode(null, out _, out _), Is.False);
+            Assert.That(ConnectionPayload.TryDecode(null, out _, out _, out _, out _), Is.False);
+            byte[] p = ConnectionPayload.Encode(3, Guid.NewGuid());
+            p[2] = 7;
+            Assert.That(ConnectionPayload.TryDecode(p, out _, out _, out _, out _), Is.False);
         }
 
         [Test]
@@ -44,7 +56,10 @@ namespace VoxelRush.Tests.Domain.Networking
             var gate = new ConnectionGate(8, Version);
 
             Assert.That(gate.TryAdmit(1, new byte[] { 1, 0 }, 0), Is.EqualTo(ConnectionRejection.ProtocolMismatch));
-            Assert.That(gate.TryAdmit(2, ConnectionPayload.Encode(Version, Guid.Empty), 0), Is.EqualTo(ConnectionRejection.ProtocolMismatch), "v2 without a session");
+            var v2 = new byte[18];
+            v2[0] = 2;
+            Assert.That(gate.TryAdmit(2, v2, 0), Is.EqualTo(ConnectionRejection.ProtocolMismatch), "protocol 2 layout");
+            Assert.That(gate.TryAdmit(3, ConnectionPayload.Encode(Version, Guid.Empty), 0), Is.EqualTo(ConnectionRejection.ProtocolMismatch), "without a session");
         }
 
         [Test]
@@ -91,7 +106,7 @@ namespace VoxelRush.Tests.Domain.Networking
 
             Assert.That(gate.TryAdmit(1, null, 0), Is.EqualTo(ConnectionRejection.MalformedPayload));
             Assert.That(gate.TryAdmit(2, new byte[] { 1, 0, 0 }, 0), Is.EqualTo(ConnectionRejection.MalformedPayload));
-            Assert.That(gate.TryAdmit(3, ConnectionPayload.Encode(3, Guid.NewGuid()), 0), Is.EqualTo(ConnectionRejection.ProtocolMismatch));
+            Assert.That(gate.TryAdmit(3, ConnectionPayload.Encode(4, Guid.NewGuid()), 0), Is.EqualTo(ConnectionRejection.ProtocolMismatch));
             Assert.That(gate.Count, Is.Zero);
         }
 

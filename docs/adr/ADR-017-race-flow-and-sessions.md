@@ -14,7 +14,7 @@ Status: Accepted (VR-060..VR-062). Extends ADR-014 (handshake) and ADR-016 (worl
 - Trusting client-reported finishes or lap times: rejected (GAMEPLAY_RULES, VEHICLE_NETWORKING).
 
 ## Consequences / risks
-- The session id is self-chosen, so whoever learns it can resume that racer. Acceptable for the test lobby; join tickets (VR-080) replace it with server-issued identity.
+- The session id is self-chosen, so whoever learns it can resume that racer. Acceptable for the test lobby; on servers started with `-worldId`, join tickets (ADR-018, VR-080) replace it with the API-issued player id.
 - An unclean disconnect (crash) blocks the same session until the transport times the old connection out.
 
 ## Migration / rollback

@@ -65,6 +65,16 @@ namespace VoxelRush.Tests.Domain.Hosting
         }
 
         [Test]
+        public void Parse_WorldId()
+        {
+            var id = Guid.NewGuid();
+            Assert.That(ServerLaunchOptions.Parse(new[] { "-worldId", id.ToString() }).Options!.WorldId, Is.EqualTo(id));
+            Assert.That(ServerLaunchOptions.Parse(Array.Empty<string>()).Options!.WorldId, Is.Null);
+            Assert.That(ServerLaunchOptions.Parse(new[] { "-worldId", "not-a-guid" }).IsSuccess, Is.False);
+            Assert.That(ServerLaunchOptions.Parse(new[] { "-worldId", Guid.Empty.ToString() }).IsSuccess, Is.False);
+        }
+
+        [Test]
         public void Parse_WorldDir()
         {
             Assert.That(ServerLaunchOptions.Parse(new[] { "-worldDir", "/data/world-1" }).Options!.WorldDir, Is.EqualTo("/data/world-1"));

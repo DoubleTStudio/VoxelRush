@@ -83,7 +83,32 @@ namespace VoxelRush.Server
                 return;
             }
 
-            _network = ServerNetwork.Start(Options.Port, Options.MaxPlayers);
+            TicketVerifier? tickets = null;
+            if (Options.WorldId is Guid worldId)
+            {
+                // Ticket mode: the key comes from the environment only.
+                string? encoded = Environment.GetEnvironmentVariable(ServerLaunchOptions.TicketKeyEnvironment);
+                byte[]? key = null;
+                try
+                {
+                    key = encoded == null ? null : Convert.FromBase64String(encoded);
+                }
+                catch (FormatException)
+                {
+                }
+
+                if (key == null || key.Length < JoinTicket.MinKeyBytes)
+                {
+                    Debug.LogError(LogEvent.Format("server_ticket_key_missing", ("variable", ServerLaunchOptions.TicketKeyEnvironment)));
+                    Shutdown(ExitCodeInvalidArguments, "ticket_key_missing");
+                    return;
+                }
+
+                tickets = new TicketVerifier(key, worldId);
+                Debug.Log(LogEvent.Format("server_tickets_required", ("worldId", worldId)));
+            }
+
+            _network = ServerNetwork.Start(Options.Port, Options.MaxPlayers, tickets);
             if (_network == null)
             {
                 Debug.LogError(LogEvent.Format("server_listen_failed", ("port", Options.Port)));
@@ -93,7 +118,10 @@ namespace VoxelRush.Server
 
             _vehicles = new VehicleSpawner();
             string worldDir = Options.WorldDir ?? WorldSyncServer.DefaultDirectory();
-            _world = _network.CreateWorldSync(PlotWorld, worldDir, _vehicles.EyeOf, _vehicles.Occupants);
+            WorldInfo world = Options.WorldId is Guid id
+                ? new WorldInfo(id, PlotWorld.Kind, PlotWorld.Seed, PlotWorld.GeneratorVersion, PlotWorld.SchemaVersion, PlotWorld.RegionMin, PlotWorld.RegionMax)
+                : PlotWorld;
+            _world = _network.CreateWorldSync(world, worldDir, _vehicles.EyeOf, _vehicles.Occupants);
             _race = _network.CreateRace(ArenaTrack.Create(), _vehicles, Options.RaceAutoStart);
             _simulation = NetworkSimulation.Instance;
             _nextMetricsAt = Time.realtimeSinceStartupAsDouble + MetricsIntervalSeconds;
