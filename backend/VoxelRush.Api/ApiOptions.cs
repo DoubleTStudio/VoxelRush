@@ -27,6 +27,10 @@ public sealed class ApiOptions
 
     public int MaxWorldsPerOwner { get; set; } = 3;
 
+    public StoreOptions Store { get; set; } = new();
+
+    public AdsOptions Ads { get; set; } = new();
+
     /// <summary>Per client IP on /v1/auth.</summary>
     public int AuthRequestsPerMinute { get; set; } = 20;
 
@@ -72,6 +76,44 @@ public sealed class ApiOptions
 
         return bytes.Length >= 32 ? bytes : throw new InvalidOperationException($"VoxelRush:{name} must be at least 32 bytes.");
     }
+}
+
+/// <summary>ECON-002 store verification. Secrets come from the environment; nothing here ships in the game.</summary>
+public sealed class StoreOptions
+{
+    public string AppleBundleId { get; set; } = "com.doubletstudio.voxelrush";
+
+    /// <summary>Accepted App Store environments; add "Sandbox" only for development and TestFlight deployments.</summary>
+    public string[] AppleEnvironments { get; set; } = ["Production"];
+
+    /// <summary>Base64 DER trust anchor override (tests); default is the embedded, fingerprint-pinned Apple Root CA - G3.</summary>
+    public string? AppleRootCertificate { get; set; }
+
+    public string GooglePackageName { get; set; } = "com.doubletstudio.voxelrush";
+
+    /// <summary>Service account key JSON with Android Publisher access; Google purchases answer 501 without it.</summary>
+    public string? GoogleServiceAccountJson { get; set; }
+
+    public string GoogleApiBaseUrl { get; set; } = "https://androidpublisher.googleapis.com/";
+
+    public bool GoogleAllowTestPurchases { get; set; }
+
+    /// <summary>Secret in the Pub/Sub push URL for real-time developer notifications.</summary>
+    public string? GooglePushToken { get; set; }
+}
+
+/// <summary>ECON-002 rewarded ads (AdMob server-side verification). Disabled until the privacy/age review signs off.</summary>
+public sealed class AdsOptions
+{
+    public bool Enabled { get; set; }
+
+    public string AdMobKeysUrl { get; set; } = "https://www.gstatic.com/admob/reward/verifier-keys.json";
+
+    public int RewardXp { get; set; } = 25;
+
+    public int DailyCap { get; set; } = 5;
+
+    public int MaxCallbackAgeHours { get; set; } = 24;
 }
 
 /// <summary>S3-compatible object storage (Cloudflare R2, MinIO, AWS S3).</summary>

@@ -18,5 +18,7 @@
     <Compile Include="../../unity/Assets/VoxelRush/Runtime/Core/Networking/JoinTicket.cs" Link="Shared/JoinTicket.cs" />
     <EmbeddedResource Include="Migrations/*.sql" />
     <EmbeddedResource Include="catalog.json" LogicalName="VoxelRush.Api.catalog.json" />
+    <!-- Public Apple Root CA - G3 from apple.com/certificateauthority, pinned by SHA-256 in AppleVerifier. -->
+    <EmbeddedResource Include="Certificates/AppleRootCA-G3.cer" LogicalName="VoxelRush.Api.AppleRootCA-G3.cer" />
   </ItemGroup>
 </Project>

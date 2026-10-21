@@ -80,7 +80,10 @@ public sealed class ApiHost : IAsyncDisposable
     /// <summary>This host's own database (tests may inspect stored rows).</summary>
     public string ConnectionString { get; }
 
-    public static async Task<ApiHost> StartAsync(int authPerMinute = 10_000, int playerPerMinute = 10_000, bool storage = true)
+    /// <param name="extra">More VoxelRush__* settings for this host.</param>
+    /// <param name="services">Service overrides, e.g. fake store endpoints behind named HttpClients.</param>
+    public static async Task<ApiHost> StartAsync(int authPerMinute = 10_000, int playerPerMinute = 10_000, bool storage = true,
+        IDictionary<string, string?>? extra = null, Action<IServiceCollection>? services = null)
     {
         string database = "api_" + Guid.NewGuid().ToString("N");
         await using (var admin = new Npgsql.NpgsqlConnection(Containers.Postgres.GetConnectionString()))
@@ -107,6 +110,11 @@ public sealed class ApiHost : IAsyncDisposable
             ["VoxelRush__Snapshots__MaxSnapshotBytes"] = "4096",
         };
 
+        foreach ((string key, string? value) in extra ?? new Dictionary<string, string?>())
+        {
+            settings["VoxelRush__" + key] = value;
+        }
+
         // Options are read before the host builds, so pass them as environment variables (restored right after).
         var previous = settings.Keys.ToDictionary(k => k, Environment.GetEnvironmentVariable);
         foreach ((string key, string? value) in settings)
@@ -116,7 +124,11 @@ public sealed class ApiHost : IAsyncDisposable
 
         var clock = new ManualClock();
         var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
-            b.ConfigureTestServices(services => services.AddSingleton<TimeProvider>(clock)));
+            b.ConfigureTestServices(s =>
+            {
+                s.AddSingleton<TimeProvider>(clock);
+                services?.Invoke(s);
+            }));
         try
         {
             factory.CreateClient().Dispose();   // boots the host: migrations + bucket
