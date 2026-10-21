@@ -65,6 +65,14 @@ namespace VoxelRush.Tests.Domain.Hosting
         }
 
         [Test]
+        public void Parse_IdleShutdown()
+        {
+            Assert.That(ServerLaunchOptions.Parse(new[] { "-idleShutdownSeconds", "300" }).Options!.IdleShutdownSeconds, Is.EqualTo(300));
+            Assert.That(ServerLaunchOptions.Parse(Array.Empty<string>()).Options!.IdleShutdownSeconds, Is.Null);
+            Assert.That(ServerLaunchOptions.Parse(new[] { "-idleShutdownSeconds", "2" }).IsSuccess, Is.False);
+        }
+
+        [Test]
         public void Parse_WorldId()
         {
             var id = Guid.NewGuid();

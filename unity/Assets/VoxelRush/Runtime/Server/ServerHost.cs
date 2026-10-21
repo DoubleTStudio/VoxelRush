@@ -21,6 +21,9 @@ namespace VoxelRush.Server
         public const int ExitCodeSuccess = 0;
         public const int ExitCodeInvalidArguments = 2;
         public const int ExitCodeStartupFailure = 3;
+        // SAVE-005: another server holds this world's lease, or this server lost it.
+        public const int ExitCodeWorldLeased = 4;
+        public const int ExitCodeLeaseLost = 5;
 
         private const double MetricsIntervalSeconds = 5;
 
@@ -30,6 +33,8 @@ namespace VoxelRush.Server
         private WorldSyncServer? _world;
         private RaceServer? _race;
         private RewardClient? _rewards;
+        private LeaseClient? _lease;
+        private double _emptySince = -1;
 
         // First networked slice: a flat build plot around the spawn row (world x −48..47, z −80..−17, y −32..15).
         private static readonly WorldInfo PlotWorld = new WorldInfo(
@@ -107,6 +112,25 @@ namespace VoxelRush.Server
 
                 tickets = new TicketVerifier(key, worldId);
                 Debug.Log(LogEvent.Format("server_tickets_required", ("worldId", worldId)));
+
+                // One authoritative server per world: take the lease before touching the world.
+                string? api = Environment.GetEnvironmentVariable(RewardClient.ApiUrlEnvironment);
+                string? token = Environment.GetEnvironmentVariable(RewardClient.ServiceTokenEnvironment);
+                if (!string.IsNullOrEmpty(api) && !string.IsNullOrEmpty(token))
+                {
+                    _lease = new LeaseClient(api, token, worldId);
+                    LeaseAcquire acquired = _lease.Acquire();
+                    if (acquired != LeaseAcquire.Granted)
+                    {
+                        Debug.LogError(LogEvent.Format("server_world_leased", ("result", acquired), ("heldBy", _lease.HeldBy ?? "?")));
+                        _lease.Dispose();
+                        _lease = null;
+                        Shutdown(acquired == LeaseAcquire.HeldByOther ? ExitCodeWorldLeased : ExitCodeStartupFailure, "world_lease");
+                        return;
+                    }
+
+                    Debug.Log(LogEvent.Format("server_lease_acquired", ("holder", _lease.Holder), ("fencing", _lease.Fencing)));
+                }
             }
 
             _network = ServerNetwork.Start(Options.Port, Options.MaxPlayers, tickets);
@@ -173,6 +197,32 @@ namespace VoxelRush.Server
                 _nextMetricsAt = now + MetricsIntervalSeconds;
                 LogTickMetrics(now);
             }
+            if (_lease != null && _lease.Lost)
+            {
+                // Another server may already own the world: stop serving it (the journal still flushes on dispose).
+                Debug.LogError(LogEvent.Format("server_lease_lost", ("fencing", _lease.Fencing)));
+                Shutdown(ExitCodeLeaseLost, "lease_lost");
+                return;
+            }
+
+            if (Options.IdleShutdownSeconds is int idle && _network != null)
+            {
+                if (_network.PlayerCount > 0)
+                {
+                    _emptySince = -1;
+                }
+                else if (_emptySince < 0)
+                {
+                    _emptySince = now;
+                }
+                else if (now - _emptySince >= idle)
+                {
+                    Debug.Log(LogEvent.Format("server_idle_shutdown", ("idleSeconds", idle)));
+                    Shutdown(ExitCodeSuccess, "idle");
+                    return;
+                }
+            }
+
             if (Options.SmokeTestTicks is int limit && TicksElapsed >= limit)
             {
                 Debug.Log(LogEvent.Format("server_smoke_test_passed", ("ticks", TicksElapsed), ("seconds", Time.realtimeSinceStartupAsDouble)));
@@ -204,6 +254,7 @@ namespace VoxelRush.Server
         {
             _rewards?.Dispose();
             _rewards = null;
+            ReleaseLease();
             _world?.Dispose();
             _world = null;
             _network?.Dispose();
@@ -214,6 +265,8 @@ namespace VoxelRush.Server
         {
             _world?.Dispose();
             _world = null;
+            // After the journal is flushed and closed, so the next holder sees everything this server acknowledged.
+            ReleaseLease();
             if (_simulation != null)
             {
                 Debug.Log(LogEvent.Format("server_tick_summary", ("totalTicks", _simulation.Metrics.TotalTicks), ("totalOverruns", _simulation.Metrics.TotalOverruns), ("droppedTicks", _simulation.DroppedTicks)));
@@ -231,6 +284,12 @@ namespace VoxelRush.Server
             {
                 Application.Quit(exitCode);
             }
+        }
+
+        private void ReleaseLease()
+        {
+            _lease?.Dispose();
+            _lease = null;
         }
     }
 }

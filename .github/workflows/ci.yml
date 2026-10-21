@@ -168,6 +168,9 @@ jobs:
       # SAVE-006: validated race rewards granted once through the API; a linked second device sees them.
       - name: Progression flow test (rewards, cross-device, no double grant)
         run: tools/smoke-progression.sh docker
+      # SAVE-005: one server per world (lease), idle shutdown releases it, the saved world survives the handover.
+      - name: World lease test (single writer, idle shutdown, handover)
+        run: tools/smoke-lease.sh docker
       # VR-072 DoD: drive, world sync and race again with 2% packet loss inside Unity Transport; main/manual only.
       - name: Loss test (2% transport loss)
         if: env.BUILD_IOS == 'true'
@@ -216,6 +219,7 @@ jobs:
             artifacts/smoke-race/*.log
             artifacts/smoke-auth/*.log
             artifacts/smoke-progression/*.log
+            artifacts/smoke-lease/*.log
             artifacts/rollback-drill/
             artifacts/stress-destruction/*.log
             artifacts/load/

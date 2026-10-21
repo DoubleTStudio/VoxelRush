@@ -214,7 +214,7 @@ public sealed class SecurityTests
         WorldView world = await _api.CreateWorldAsync(owner, "Saved World");
         byte[] snapshot = RandomNumberGenerator.GetBytes(1500);
         string sha = Convert.ToHexString(SHA256.HashData(snapshot)).ToLowerInvariant();
-        HttpClient service = _api.Service();
+        HttpClient service = await _api.LeasedServiceAsync(world.Id);
 
         var upload = await (await service.PostAsJsonAsync($"/internal/v1/worlds/{world.Id}/snapshots/upload", new { x = -3, y = 0, z = 7, revision = 42, sha256 = sha, sizeBytes = snapshot.Length }))
             .Content.ReadFromJsonAsync<PresignedUrl>();
@@ -239,7 +239,7 @@ public sealed class SecurityTests
         TokenPair owner = await _api.GuestAsync();
         WorldView world = await _api.CreateWorldAsync(owner, "Corrupt World");
         byte[] promised = RandomNumberGenerator.GetBytes(800);
-        HttpClient service = _api.Service();
+        HttpClient service = await _api.LeasedServiceAsync(world.Id);
         var upload = await (await service.PostAsJsonAsync($"/internal/v1/worlds/{world.Id}/snapshots/upload",
             new { x = 1, y = 1, z = 1, revision = 3, sha256 = Convert.ToHexString(SHA256.HashData(promised)), sizeBytes = promised.Length })).Content.ReadFromJsonAsync<PresignedUrl>();
         using var storage = new HttpClient();
@@ -259,7 +259,7 @@ public sealed class SecurityTests
         TokenPair owner = await _api.GuestAsync();
         WorldView world = await _api.CreateWorldAsync(owner, "Bounds");
 
-        var response = await _api.Service().PostAsJsonAsync($"/internal/v1/worlds/{world.Id}/snapshots/upload",
+        var response = await (await _api.LeasedServiceAsync(world.Id)).PostAsJsonAsync($"/internal/v1/worlds/{world.Id}/snapshots/upload",
             new { x, y, z, revision, sha256 = new string('a', 64), sizeBytes = size });
 
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));

@@ -15,6 +15,7 @@ PostgreSQL, forward-only migrations in `backend/VoxelRush.Api/Migrations` (appli
 | `reward_grants` | Idempotent reward ledger | unique `grant_key` (e.g. `race:<raceId>:<playerId>`): a grant can't apply twice |
 | `device_link_codes` | Second-device sign-in (SAVE-006) | SHA-256 of a 10-character code, 10 min, single use |
 | `player_entitlements` | Cosmetic ownership (ECON-001) | primary key (source, transaction): a receipt grants once; `revoked` on refund; sources `level`/`grant`/`purchase` |
+| `world_leases` | One authoritative server per world (SAVE-005) | holder, fencing number (+1 per new holder), expiry, released flag; world-scoped server writes must present the live (holder, fencing) |
 | `world_quotas` | Per-owner limits | max worlds, max stored bytes, idle shutdown seconds; absent row = configured defaults |
 
 Identifiers: UUIDs for players, worlds, operations (journal records carry `operationId`), tickets. Chunk revisions are per chunk, ordered, assigned by the single authoritative writer.
