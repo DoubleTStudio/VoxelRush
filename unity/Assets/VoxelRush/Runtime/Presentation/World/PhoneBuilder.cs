@@ -55,6 +55,9 @@ namespace VoxelRush.Presentation.World
 
         public byte BlockType => _blockType;
 
+        /// <summary>Each tap's verdict: a local pre-check refusal at once, otherwise the server's answer later.</summary>
+        public event Action<EditAction, EditRejection>? EditResolved;
+
         public void SelectBlock(byte blockType)
         {
             foreach ((byte id, string name) in Palette)
@@ -94,6 +97,7 @@ namespace VoxelRush.Presentation.World
             if (!VoxelRaycast.Cast(ray.origin.x, ray.origin.y, ray.origin.z, ray.direction.x, ray.direction.y, ray.direction.z, _maxAimDistance, _world.IsSolid, out VoxelHit hit))
             {
                 Status = "Tap the ground or a block";
+                EditResolved?.Invoke(Current == Mode.Place ? EditAction.Place : EditAction.Remove, EditRejection.InvalidIndex);
                 return EditRejection.InvalidIndex;
             }
 
@@ -104,12 +108,16 @@ namespace VoxelRush.Presentation.World
             if (verdict != EditRejection.None)
             {
                 Status = EditValidator.Describe(verdict);
+                EditResolved?.Invoke(action, verdict);
                 return verdict;
             }
 
             Sent++;
             sync.SendEdit(ChunkMath.ToChunk(target), ChunkMath.ToLocal(target).Index, action, _blockType, (rejection, _) =>
-                Status = rejection == EditRejection.None ? (action == EditAction.Place ? "Placed" : "Removed") : EditValidator.Describe(rejection));
+            {
+                Status = rejection == EditRejection.None ? (action == EditAction.Place ? "Placed" : "Removed") : EditValidator.Describe(rejection);
+                EditResolved?.Invoke(action, rejection);
+            });
             return EditRejection.None;
         }
 

@@ -27,6 +27,7 @@ namespace VoxelRush.Presentation.World
         private Mesh? _mesh;
         private int _next;
         private ClientWorldReplica? _replica;
+        private System.Action<ChunkCoord, ushort, byte, byte>? _onBlockChanged;
 
         public int Capacity => capacity;
 
@@ -63,14 +64,16 @@ namespace VoxelRush.Presentation.World
         {
             Detach();
             _replica = replica;
-            replica.BlockChanged = OnBlockChanged;
+            // Combined, not assigned: audio listens to the same hook.
+            _onBlockChanged ??= OnBlockChanged;
+            replica.BlockChanged += _onBlockChanged;
         }
 
         public void Detach()
         {
-            if (_replica != null && _replica.BlockChanged == (System.Action<ChunkCoord, ushort, byte, byte>)OnBlockChanged)
+            if (_replica != null && _onBlockChanged != null)
             {
-                _replica.BlockChanged = null;
+                _replica.BlockChanged -= _onBlockChanged;
             }
 
             _replica = null;
