@@ -398,12 +398,15 @@ namespace VoxelRush.Networking.Online
         }
     }
 
-    /// <summary>Device-local refresh token (PlayerPrefs; platform secure storage is a follow-up).</summary>
+    /// <summary>Device-local refresh token in PlayerPrefs: editor and desktop (AUTH-002 secures mobile).</summary>
     public sealed class PrefsTokenStore : ITokenStore
     {
         private readonly string _key;
 
-        public PrefsTokenStore(string apiUrl) => _key = "voxelrush.refresh." + apiUrl.Trim().TrimEnd('/');
+        public PrefsTokenStore(string apiUrl) => _key = KeyFor(apiUrl);
+
+        /// <summary>One token per API, under the same key in every store so older tokens migrate.</summary>
+        public static string KeyFor(string apiUrl) => "voxelrush.refresh." + apiUrl.Trim().TrimEnd('/');
 
         public string? Load()
         {
