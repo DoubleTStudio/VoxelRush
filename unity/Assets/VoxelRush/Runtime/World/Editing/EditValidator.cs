@@ -32,6 +32,7 @@ namespace VoxelRush.World.Editing
         PersistenceBackpressure,
         NotPermitted,
         RaceLocked,
+        StructureSettling,
     }
 
     /// <summary>Axis-aligned box in world block units (min inclusive, max exclusive).</summary>
@@ -169,6 +170,7 @@ namespace VoxelRush.World.Editing
             EditRejection.PersistenceBackpressure => "Saving is catching up. Try again",
             EditRejection.NotPermitted => "You don't have permission to build here",
             EditRejection.RaceLocked => "The track is locked during the race",
+            EditRejection.StructureSettling => "The structure is settling. Try again",
             _ => throw new ArgumentOutOfRangeException(nameof(rejection)),
         };
 
@@ -191,6 +193,7 @@ namespace VoxelRush.World.Editing
             EditRejection.PersistenceBackpressure => "persistence_backpressure",
             EditRejection.NotPermitted => "not_permitted",
             EditRejection.RaceLocked => "race_locked",
+            EditRejection.StructureSettling => "structure_settling",
             _ => throw new ArgumentOutOfRangeException(nameof(rejection)),
         };
     }

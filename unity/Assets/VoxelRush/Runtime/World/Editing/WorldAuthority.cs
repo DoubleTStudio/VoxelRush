@@ -43,6 +43,9 @@ namespace VoxelRush.World.Editing
             _operationMemory = operationMemory;
         }
 
+        /// <summary>Regions where structural analysis is in progress (DES-011); client edits there are refused for now.</summary>
+        public Func<BlockPos, bool>? IsBlocked { get; set; }
+
         public long Accepted { get; private set; }
 
         public long Rejected { get; private set; }
@@ -157,6 +160,11 @@ namespace VoxelRush.World.Editing
             }
 
             BlockPos target = ChunkMath.ToWorld(intent.Chunk, local);
+            if (IsBlocked != null && IsBlocked(target))
+            {
+                return EditResult.Reject(EditRejection.StructureSettling);
+            }
+
             byte blockType = intent.Action == EditAction.Remove ? BlockIds.Air : intent.BlockType;
             EditRejection rule = _validator.Validate(intent.Action, target, intent.BlockType, eyeX, eyeY, eyeZ, this, occupants, _roleOf(actorId));
             if (rule != EditRejection.None)
@@ -255,7 +263,7 @@ namespace VoxelRush.World.Editing
 
         private static bool IsTransient(EditRejection rejection) =>
             rejection == EditRejection.RateLimited || rejection == EditRejection.ServerBusy || rejection == EditRejection.ChunkNotLoaded
-            || rejection == EditRejection.PersistenceBackpressure;
+            || rejection == EditRejection.PersistenceBackpressure || rejection == EditRejection.StructureSettling;
 
         private ulong LastChange(ChunkCoord chunk, ushort index) =>
             _lastChange.TryGetValue(chunk, out Dictionary<ushort, ulong>? changes) && changes.TryGetValue(index, out ulong revision) ? revision : 0;
