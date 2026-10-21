@@ -24,11 +24,16 @@ jobs:
         with:
           global-json-file: global.json
       - run: tools/test.sh domain
+      # VR-032 DoD: SIGKILL the journal writer repeatedly; no acknowledged edit may be lost.
+      - name: Journal crash test
+        run: tools/crash-test.sh 15
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: domain-test-results
-          path: artifacts/test-results/
+          path: |
+            artifacts/test-results/
+            artifacts/crash-test/*.txt
 
   # Unity jobs need license secrets; skip them visibly instead of failing or faking green.
   unity-license:

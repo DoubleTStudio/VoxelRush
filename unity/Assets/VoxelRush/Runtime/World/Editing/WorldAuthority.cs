@@ -21,15 +21,18 @@ namespace VoxelRush.World.Editing
         private readonly Queue<Guid> _processedOrder = new Queue<Guid>();
         private readonly Dictionary<string, TokenBucket> _rates = new Dictionary<string, TokenBucket>();
         private readonly EditValidator _validator;
+        private readonly IMutationSink? _sink;
         private readonly int _maxEditsPerSecond;
         private readonly int _maxQueuedPerTick;
         private readonly int _operationMemory;
         private uint _queuedTick;
         private int _queuedThisTick;
 
-        public WorldAuthority(EditValidator validator, int maxEditsPerSecond = DefaultMaxEditsPerSecond, int maxQueuedPerTick = DefaultMaxQueuedPerTick, int operationMemory = DefaultOperationMemory)
+        /// <param name="sink">Durability target; null only for transient worlds (race overlays, tests).</param>
+        public WorldAuthority(EditValidator validator, int maxEditsPerSecond = DefaultMaxEditsPerSecond, int maxQueuedPerTick = DefaultMaxQueuedPerTick, int operationMemory = DefaultOperationMemory, IMutationSink? sink = null)
         {
             _validator = validator;
+            _sink = sink;
             _maxEditsPerSecond = maxEditsPerSecond;
             _maxQueuedPerTick = maxQueuedPerTick;
             _operationMemory = operationMemory;
@@ -40,6 +43,26 @@ namespace VoxelRush.World.Editing
         public long Rejected { get; private set; }
 
         public void AddChunk(ChunkData chunk) => _chunks[chunk.Coord] = chunk;
+
+        /// <summary>
+        /// Re-seeds idempotency from recovered journal records, so a client retrying an operation whose ACK was lost
+        /// in a crash gets the original (durable) result instead of a second application.
+        /// </summary>
+        public void RememberRecovered(IEnumerable<ChunkMutationBatch> batches)
+        {
+            foreach (ChunkMutationBatch batch in batches)
+            {
+                if (!_processed.ContainsKey(batch.OperationId))
+                {
+                    Remember(batch.OperationId, EditResult.Accept(batch));
+                }
+
+                foreach (BlockChange change in batch.Changes)
+                {
+                    SetLastChange(batch.Chunk, change.Index, batch.NewRevision);
+                }
+            }
+        }
 
         public bool RemoveChunk(ChunkCoord coord)
         {
@@ -136,6 +159,13 @@ namespace VoxelRush.World.Editing
                 return EditResult.Reject(rule);
             }
 
+            // Ensure durability is possible before assigning a revision: a refused enqueue after applying
+            // would leave a hole in the journaled revision chain (found by tools/crash-test.sh).
+            if (_sink != null && !_sink.CanAccept)
+            {
+                return EditResult.Reject(EditRejection.PersistenceBackpressure);
+            }
+
             ulong baseRevision = chunk.Revision;
             if (!chunk.Set(local, blockType))
             {
@@ -146,11 +176,13 @@ namespace VoxelRush.World.Editing
             SetLastChange(intent.Chunk, (ushort)local.Index, chunk.Revision);
             var batch = new ChunkMutationBatch(intent.OperationId, actorId, intent.Chunk, baseRevision, chunk.Revision, serverTick,
                 new[] { new BlockChange((ushort)local.Index, blockType) });
+            _sink?.Accept(batch);
             return EditResult.Accept(batch);
         }
 
         private static bool IsTransient(EditRejection rejection) =>
-            rejection == EditRejection.RateLimited || rejection == EditRejection.ServerBusy || rejection == EditRejection.ChunkNotLoaded;
+            rejection == EditRejection.RateLimited || rejection == EditRejection.ServerBusy || rejection == EditRejection.ChunkNotLoaded
+            || rejection == EditRejection.PersistenceBackpressure;
 
         private ulong LastChange(ChunkCoord chunk, ushort index) =>
             _lastChange.TryGetValue(chunk, out Dictionary<ushort, ulong>? changes) && changes.TryGetValue(index, out ulong revision) ? revision : 0;

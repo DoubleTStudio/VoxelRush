@@ -29,6 +29,7 @@ namespace VoxelRush.World.Editing
         InvalidIndex,
         UnsupportedAction,
         ServerBusy,
+        PersistenceBackpressure,
     }
 
     /// <summary>Axis-aligned box in world block units (min inclusive, max exclusive).</summary>
@@ -156,6 +157,7 @@ namespace VoxelRush.World.Editing
             EditRejection.InvalidIndex => "Invalid target",
             EditRejection.UnsupportedAction => "Not available yet",
             EditRejection.ServerBusy => "Server busy. Try again",
+            EditRejection.PersistenceBackpressure => "Saving is catching up. Try again",
             _ => throw new ArgumentOutOfRangeException(nameof(rejection)),
         };
 
@@ -175,6 +177,7 @@ namespace VoxelRush.World.Editing
             EditRejection.InvalidIndex => "invalid_index",
             EditRejection.UnsupportedAction => "unsupported_action",
             EditRejection.ServerBusy => "server_busy",
+            EditRejection.PersistenceBackpressure => "persistence_backpressure",
             _ => throw new ArgumentOutOfRangeException(nameof(rejection)),
         };
     }

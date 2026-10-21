@@ -48,6 +48,26 @@ namespace VoxelRush.World.Chunks
             _base = (byte[])baseBlocks.Clone();
         }
 
+        /// <summary>Restores a persisted chunk: generated base plus stored edits, at the stored revision (no new revisions).</summary>
+        public static ChunkData FromSnapshot(ChunkCoord coord, int generatorVersion, byte[] baseBlocks, ulong revision, IEnumerable<KeyValuePair<ushort, byte>> edits)
+        {
+            var chunk = new ChunkData(coord, generatorVersion, baseBlocks, revision);
+            foreach (KeyValuePair<ushort, byte> edit in edits)
+            {
+                if (edit.Key >= ChunkMath.Volume)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(edits), $"Edit index {edit.Key} out of range.");
+                }
+
+                if (chunk._base[edit.Key] != edit.Value)
+                {
+                    chunk._edits[edit.Key] = edit.Value;
+                }
+            }
+
+            return chunk;
+        }
+
         public ChunkCoord Coord { get; }
 
         public int GeneratorVersion { get; }
