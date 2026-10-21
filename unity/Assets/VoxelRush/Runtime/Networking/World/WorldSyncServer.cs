@@ -28,6 +28,7 @@ namespace VoxelRush.Networking.World
         private readonly JournalWriter _journal;
         private readonly WorldAuthority _authority;
         private readonly CollapseScheduler _collapse;
+        private readonly SnapshotSync? _sync;
         private readonly Func<ulong, Vector3?> _actorEye;
         private readonly Func<IReadOnlyList<WorldBox>> _occupants;
         private readonly Queue<(ulong ClientId, EditIntent Intent)> _edits = new Queue<(ulong, EditIntent)>();
@@ -38,7 +39,7 @@ namespace VoxelRush.Networking.World
 
         /// <param name="roleOf">Server-side role of a client (its join ticket; DES-002 zones decide what each role may do).</param>
         public WorldSyncServer(NetworkManager manager, WorldInfo info, string directory, Func<ulong, Vector3?> actorEye, Func<IReadOnlyList<WorldBox>> occupants,
-            Func<ulong, WorldRole>? roleOf = null, bool visitorsCanBuild = true)
+            Func<ulong, WorldRole>? roleOf = null, bool visitorsCanBuild = true, ISnapshotRemote? snapshots = null)
         {
             _manager = manager;
             _info = info;
@@ -46,7 +47,16 @@ namespace VoxelRush.Networking.World
             _occupants = occupants;
             IBaseGenerator generator = info.CreateGenerator();
             _store = new WorldStore(directory, generator.GeneratorVersion, generator.GenerateBlocks);
-            _store.RecoverJournal();
+            if (snapshots != null)
+            {
+                // SAVE-003 cold restore: a fresh machine gets the world back; throws if storage is unreachable.
+                _sync = new SnapshotSync(_store, snapshots);
+                int imported = _sync.Restore(info.RegionChunks());
+                Debug.Log(LogEvent.Format("world_snapshots_restored", ("imported", imported)));
+            }
+
+            // Journal is not open yet, so this is the safe moment to drop records both snapshot generations cover.
+            int compacted = _store.CompactJournal();
             _journal = new JournalWriter(_store.JournalPath);
             _authority = new WorldAuthority(new EditValidator(ZoneMap.ProtectedOnly(Array.Empty<WorldBox>(), visitorsCanBuild)), sink: _journal,
                 roleOf: roleOf == null ? null : actor => actor.StartsWith("client:", StringComparison.Ordinal) && ulong.TryParse(actor.Substring(7), out ulong id) ? roleOf(id) : WorldRole.Visitor);
@@ -64,7 +74,7 @@ namespace VoxelRush.Networking.World
             }
 
             Debug.Log(LogEvent.Format("world_recovered",
-                ("dir", directory), ("records", _store.RecoveredRecords.Count), ("truncatedBytes", _store.TruncatedBytes),
+                ("dir", directory), ("records", _store.RecoveredRecords.Count), ("compacted", compacted), ("truncatedBytes", _store.TruncatedBytes),
                 ("rejectedSnapshots", _store.RejectedSnapshots), ("chunks", CountRegion())));
 
             manager.CustomMessagingManager.RegisterNamedMessageHandler(WorldMessages.Edit, OnEdit);
@@ -168,6 +178,13 @@ namespace VoxelRush.Networking.World
         public void Dispose()
         {
             _journal.Dispose();
+            if (_sync != null && _journal.Failure == null)
+            {
+                // Only what the journal made durable is published.
+                (int written, int uploaded, int failed) = _sync.Publish(Region());
+                Debug.Log(LogEvent.Format("world_snapshots_published", ("written", written), ("uploaded", uploaded), ("failed", failed)));
+            }
+
             foreach (ChunkCoord coord in _info.RegionChunks())
             {
                 ChunkData chunk = _authority.GetChunk(coord)!;
@@ -179,6 +196,14 @@ namespace VoxelRush.Networking.World
 
             Debug.Log(LogEvent.Format("world_closed", ("accepted", _authority.Accepted), ("rejected", _authority.Rejected), ("durable", _journal.DurableCount),
                 ("collapses", _collapse.Collapses), ("collapsedBlocks", _collapse.BlocksRemoved), ("collapseAbandoned", _collapse.Abandoned)));
+        }
+
+        private IEnumerable<ChunkData> Region()
+        {
+            foreach (ChunkCoord coord in _info.RegionChunks())
+            {
+                yield return _authority.GetChunk(coord)!;
+            }
         }
 
         public static string DefaultDirectory() =>

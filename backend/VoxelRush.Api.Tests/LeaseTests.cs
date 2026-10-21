@@ -102,6 +102,20 @@ public sealed class LeaseTests
     }
 
     [Test]
+    public async Task WithoutObjectStorage_SnapshotRoutesSayDisabled()
+    {
+        await using ApiHost bare = await ApiHost.StartAsync(storage: false);
+        Guid world = (await bare.CreateWorldAsync(await bare.GuestAsync(), "Local")).Id;
+
+        var latest = await bare.Service().GetAsync($"/internal/v1/worlds/{world}/snapshots/latest?x=0&y=0&z=0");
+
+        Assert.That(latest.StatusCode, Is.EqualTo(HttpStatusCode.NotImplemented));
+        Assert.That(await latest.Content.ReadAsStringAsync(), Does.Contain("storage_disabled"));
+        Assert.That((await bare.Client().GetAsync($"/internal/v1/worlds/{world}/snapshots/latest?x=0&y=0&z=0")).StatusCode, Is.EqualTo(HttpStatusCode.Unauthorized),
+            "auth first: no configuration hints to strangers");
+    }
+
+    [Test]
     public async Task InvalidRequests_AndUnknownWorlds()
     {
         Guid world = await WorldAsync();

@@ -141,10 +141,11 @@ namespace VoxelRush.Networking
             _http.PostAsync($"internal/v1/worlds/{_world}/lease/{action}", new StringContent(json, Encoding.UTF8, "application/json"));
 
         // Minimal field read: the API's lease JSON is flat.
-        private static string? Field(string json, string name)
+        internal static string? Field(string json, string name)
         {
             Match m = Regex.Match(json, $"\"{name}\"\\s*:\\s*\"?([^\",}}]+)");
-            return m.Success ? m.Groups[1].Value : null;
+            // The API's JSON escapes characters such as & as \u0026 (presigned URLs).
+            return m.Success ? Regex.Replace(m.Groups[1].Value, @"\\u([0-9a-fA-F]{4})", u => ((char)Convert.ToInt32(u.Groups[1].Value, 16)).ToString()) : null;
         }
     }
 }

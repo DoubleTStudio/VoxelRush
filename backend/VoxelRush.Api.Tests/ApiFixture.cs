@@ -80,7 +80,7 @@ public sealed class ApiHost : IAsyncDisposable
     /// <summary>This host's own database (tests may inspect stored rows).</summary>
     public string ConnectionString { get; }
 
-    public static async Task<ApiHost> StartAsync(int authPerMinute = 10_000, int playerPerMinute = 10_000)
+    public static async Task<ApiHost> StartAsync(int authPerMinute = 10_000, int playerPerMinute = 10_000, bool storage = true)
     {
         string database = "api_" + Guid.NewGuid().ToString("N");
         await using (var admin = new Npgsql.NpgsqlConnection(Containers.Postgres.GetConnectionString()))
@@ -100,7 +100,7 @@ public sealed class ApiHost : IAsyncDisposable
             ["VoxelRush__GameServerEndpoint"] = "game.test:7777",
             ["VoxelRush__AuthRequestsPerMinute"] = authPerMinute.ToString(),
             ["VoxelRush__PlayerRequestsPerMinute"] = playerPerMinute.ToString(),
-            ["VoxelRush__Snapshots__ServiceUrl"] = Containers.S3Url,
+            ["VoxelRush__Snapshots__ServiceUrl"] = storage ? Containers.S3Url : string.Empty,
             ["VoxelRush__Snapshots__AccessKey"] = Containers.S3AccessKey,
             ["VoxelRush__Snapshots__SecretKey"] = Containers.S3SecretKey,
             ["VoxelRush__Snapshots__Bucket"] = "snapshots-" + database.Replace("_", "-"),

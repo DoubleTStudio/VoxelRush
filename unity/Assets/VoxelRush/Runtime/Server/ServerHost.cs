@@ -34,6 +34,7 @@ namespace VoxelRush.Server
         private RaceServer? _race;
         private RewardClient? _rewards;
         private LeaseClient? _lease;
+        private ApiSnapshotRemote? _snapshots;
         private double _emptySince = -1;
 
         // First networked slice: a flat build plot around the spawn row (world x −48..47, z −80..−17, y −32..15).
@@ -146,7 +147,30 @@ namespace VoxelRush.Server
             WorldInfo world = Options.WorldId is Guid id
                 ? new WorldInfo(id, PlotWorld.Kind, PlotWorld.Seed, PlotWorld.GeneratorVersion, PlotWorld.SchemaVersion, PlotWorld.RegionMin, PlotWorld.RegionMax)
                 : PlotWorld;
-            _world = _network.CreateWorldSync(world, worldDir, _vehicles.EyeOf, _vehicles.Occupants);
+            try
+            {
+                if (_lease != null)
+                {
+                    _snapshots = new ApiSnapshotRemote(Environment.GetEnvironmentVariable(RewardClient.ApiUrlEnvironment)!,
+                        Environment.GetEnvironmentVariable(RewardClient.ServiceTokenEnvironment)!, Options.WorldId!.Value, _lease.Holder, _lease.Fencing);
+                    if (!_snapshots.StorageEnabled())
+                    {
+                        Debug.LogWarning(LogEvent.Format("world_snapshots_disabled", ("reason", "storage_disabled")));
+                        _snapshots.Dispose();
+                        _snapshots = null;
+                    }
+                }
+
+                _world = _network.CreateWorldSync(world, worldDir, _vehicles.EyeOf, _vehicles.Occupants, _snapshots);
+            }
+            catch (System.IO.IOException e)
+            {
+                // Storage unreachable on a cold start: serving an older world would later overwrite the newer one.
+                Debug.LogError(LogEvent.Format("world_restore_failed", ("error", e.Message)));
+                Shutdown(ExitCodeStartupFailure, "world_restore_failed");
+                return;
+            }
+
             // SAVE-006: XP for validated results, only with API identities (tickets) and API credentials configured.
             if (tickets != null)
             {
@@ -254,9 +278,11 @@ namespace VoxelRush.Server
         {
             _rewards?.Dispose();
             _rewards = null;
-            ReleaseLease();
             _world?.Dispose();
             _world = null;
+            _snapshots?.Dispose();
+            _snapshots = null;
+            ReleaseLease();
             _network?.Dispose();
             _network = null;
         }
@@ -265,7 +291,9 @@ namespace VoxelRush.Server
         {
             _world?.Dispose();
             _world = null;
-            // After the journal is flushed and closed, so the next holder sees everything this server acknowledged.
+            _snapshots?.Dispose();
+            _snapshots = null;
+            // After the journal is flushed and snapshots published, so the next holder sees everything acknowledged.
             ReleaseLease();
             if (_simulation != null)
             {
