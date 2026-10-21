@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
+using VoxelRush.Core;
 using VoxelRush.Core.Race;
 
 namespace VoxelRush.Tests.Domain.Race
@@ -132,6 +133,22 @@ namespace VoxelRush.Tests.Domain.Race
             // 30 m in one tick over the line.
             Assert.That(race.ReportMovement("a", P(30, 0), P(0, 0), ++_tick), Is.EqualTo(CrossingOutcome.Teleported));
             Assert.That(race.FinishTickOf("a"), Is.Null);
+            Assert.That(race.SuspiciousSamples, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void ServerCatchUp_SamplingSeveralTicksAtOnce_IsNotATeleport()
+        {
+            RaceAuthority race = Racing();
+            Drive(race, "a", new[] { P(0, 0), P(0, 10) }, 25f);
+            float perTick = race.Track.MaxPlausibleSpeed / SimulationConstants.ServerTickRate;
+            Vec3 from = P(0, 10), to = P(0, 10 + perTick * 3.5f);
+
+            // The server stalled and its simulation ran 4 ticks before the next sample.
+            _tick += 4;
+            Assert.That(race.ReportMovement("a", from, to, _tick), Is.Not.EqualTo(CrossingOutcome.Teleported));
+            // The same distance in a single tick is still a teleport.
+            Assert.That(race.ReportMovement("a", to, P(0, 10 + perTick * 7f), ++_tick), Is.EqualTo(CrossingOutcome.Teleported));
             Assert.That(race.SuspiciousSamples, Is.EqualTo(1));
         }
 
