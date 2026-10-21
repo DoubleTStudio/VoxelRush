@@ -63,6 +63,8 @@ hits=$(stat_of "$LOGS/j2.log" cacheHits); snaps=$(stat_of "$LOGS/j2.log" snapsho
 [[ "$(stat_of "$LOGS/j2.log" cacheMisses)" -eq 0 ]] || fail "J2 had cache misses"
 
 # Tamper with the body of an edited chunk's entry (header keeps its revision and hash).
+# In Docker mode the bot (uid 10001) owns the cache files; make them writable for this host-side edit.
+[[ "$MODE" != "docker" ]] || docker run --rm -v "$LOGS/cache:/cache" "$BOT_IMAGE" chmod -R a+rwX /cache
 entry=$(find "$LOGS/cache" -name "c_*.chunk" -size +40c | head -1)
 [[ -n "$entry" ]] || fail "no edited chunk in the cache"
 python3 -I -c "import sys; p=sys.argv[1]; b=bytearray(open(p,'rb').read()); b[-1]^=7; open(p,'wb').write(b)" "$entry"
