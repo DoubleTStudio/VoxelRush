@@ -3,10 +3,13 @@ using System.Collections.Generic;
 
 namespace VoxelRush.World.Chunks
 {
-    /// <summary>Block type id; 0 is air (VOXEL_ENGINE: byte ids for the first 255 materials).</summary>
+    /// <summary>Block type id; 0 is air (VOXEL_ENGINE: byte ids for the first 255 materials). Full catalog: DES-001.</summary>
     public static class BlockIds
     {
         public const byte Air = 0;
+        public const byte Grass = 1;
+        public const byte Dirt = 2;
+        public const byte Stone = 3;
     }
 
     /// <summary>
@@ -80,6 +83,21 @@ namespace VoxelRush.World.Chunks
 
             Revision++;
             return true;
+        }
+
+        /// <summary>Copies the effective blocks (base with edits applied) in local-index order.</summary>
+        public void CopyEffectiveBlocks(byte[] destination)
+        {
+            if (destination == null || destination.Length != ChunkMath.Volume)
+            {
+                throw new ArgumentException($"Destination must be {ChunkMath.Volume} bytes.", nameof(destination));
+            }
+
+            Buffer.BlockCopy(_base, 0, destination, 0, ChunkMath.Volume);
+            foreach (KeyValuePair<ushort, byte> edit in _edits)
+            {
+                destination[edit.Key] = edit.Value;
+            }
         }
 
         /// <summary>Sparse edits in ascending local-index order (stable for hashing and serialization).</summary>
