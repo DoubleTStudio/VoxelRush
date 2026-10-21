@@ -45,7 +45,8 @@ public sealed class Containers
             "\"}],\"actions\":[\"Admin\",\"Read\",\"Write\",\"List\",\"Tagging\"]}]}";
         S3 = new ContainerBuilder("chrislusf/seaweedfs:3.97")
             .WithResourceMapping(System.Text.Encoding.UTF8.GetBytes(identities), "/etc/seaweedfs/s3.json")
-            .WithCommand("server", "-s3", "-s3.config=/etc/seaweedfs/s3.json", "-dir=/data")
+            // Small volumes and a low free-space floor: the default 1% floor makes it read-only on a nearly full disk.
+            .WithCommand("server", "-s3", "-s3.config=/etc/seaweedfs/s3.json", "-dir=/data", "-master.volumeSizeLimitMB=64", "-volume.minFreeSpace=50MiB")
             .WithPortBinding(8333, true)
             .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(8333))
             .Build();

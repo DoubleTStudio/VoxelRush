@@ -222,7 +222,8 @@ public sealed class SecurityTests
         using var storage = new HttpClient();
         string tampered = upload.Url.Replace("/42.snap", "/43.snap");
         Assert.That((await storage.PutAsync(tampered, new ByteArrayContent(snapshot))).IsSuccessStatusCode, Is.False, "the signature covers the key");
-        Assert.That((await storage.PutAsync(upload.Url, new ByteArrayContent(snapshot))).IsSuccessStatusCode, Is.True);
+        HttpResponseMessage put = await storage.PutAsync(upload.Url, new ByteArrayContent(snapshot));
+        Assert.That(put.IsSuccessStatusCode, Is.True, $"{(int)put.StatusCode} {await put.Content.ReadAsStringAsync()}");
 
         Assert.That((await service.PostAsJsonAsync($"/internal/v1/worlds/{world.Id}/snapshots/commit", new { x = -3, y = 0, z = 7, revision = 42 })).StatusCode, Is.EqualTo(HttpStatusCode.NoContent));
         var latest = await service.GetFromJsonAsync<JsonElement>($"/internal/v1/worlds/{world.Id}/snapshots/latest?x=-3&y=0&z=7");
