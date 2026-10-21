@@ -126,7 +126,9 @@ jobs:
       - name: World sync test (builders, late join, restart)
         run: tools/smoke-world.sh docker
       # VR-062 DoD: 8-player race flow (lobby auto-start, validated gates, reconnect, identical results on every client).
-      - name: Race flow test (8 racers)
+      - name: Race flow test (8 racers on main, 4 on PRs)
+        env:
+          RACE_BOTS: ${{ env.BUILD_IOS == 'true' && '8' || '4' }}
         run: tools/smoke-race.sh docker
       # VR-072 DoD: drive, world sync and race again with 2% packet loss inside Unity Transport; main/manual only.
       - name: Loss test (2% transport loss)
