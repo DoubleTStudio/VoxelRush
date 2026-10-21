@@ -88,6 +88,9 @@ namespace VoxelRush.Presentation.World
 
         public Vector3 GhostPosition => _ghost != null ? _ghost.Position : Vector3.zero;
 
+        /// <summary>Each confirm's verdict: a local refusal at once, otherwise the server's answer later.</summary>
+        public event Action<EditAction, EditRejection>? EditResolved;
+
         /// <summary>Selects a palette block; a turned ramp id also sets the yaw. Anything off the palette is ignored.</summary>
         public void SelectBlock(byte blockType)
         {
@@ -157,6 +160,7 @@ namespace VoxelRush.Presentation.World
             if (!VoxelRaycast.Cast(ray.origin.x, ray.origin.y, ray.origin.z, ray.direction.x, ray.direction.y, ray.direction.z, _maxAimDistance, _world.IsSolid, out VoxelHit hit))
             {
                 Status = "Tap the ground or a block";
+                EditResolved?.Invoke(Current == Mode.Place ? EditAction.Place : EditAction.Remove, EditRejection.InvalidIndex);
                 return EditRejection.InvalidIndex;
             }
 
@@ -194,6 +198,7 @@ namespace VoxelRush.Presentation.World
             if (verdict != EditRejection.None)
             {
                 Status = EditValidator.Describe(verdict);
+                EditResolved?.Invoke(action, verdict);
                 return verdict;
             }
 
@@ -209,7 +214,10 @@ namespace VoxelRush.Presentation.World
             Sent++;
             Status = "Sending...";
             sync.SendEdit(ChunkMath.ToChunk(target), ChunkMath.ToLocal(target).Index, action, blockType, (rejection, _) =>
-                Status = rejection == EditRejection.None ? (action == EditAction.Place ? "Placed" : "Removed") : EditValidator.Describe(rejection));
+            {
+                Status = rejection == EditRejection.None ? (action == EditAction.Place ? "Placed" : "Removed") : EditValidator.Describe(rejection);
+                EditResolved?.Invoke(action, rejection);
+            });
             return EditRejection.None;
         }
 
