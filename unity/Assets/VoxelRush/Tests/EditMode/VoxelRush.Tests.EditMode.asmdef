@@ -4,6 +4,10 @@
     "references": [
         "VoxelRush.Core",
         "VoxelRush.Gameplay",
+        "Unity.Mathematics",
+        "Unity.Collections",
+        "Unity.Burst",
+        "VoxelRush.World",
         "VoxelRush.Networking",
         "Unity.Netcode.Runtime",
         "VoxelRush.Server",

@@ -32,6 +32,10 @@ namespace VoxelRush.World.Chunks
         private readonly byte[] _base;
         private readonly SortedDictionary<ushort, byte> _edits = new SortedDictionary<ushort, byte>();
 
+        // Base with edits applied, kept in step with _edits: O(1) reads and allocation-free copies (VR-070; enumerating
+        // the sorted edit map allocates). Costs 4 KiB per loaded chunk.
+        private readonly byte[] _effective;
+
         /// <param name="baseBlocks">Generated blocks, 4096 bytes in local-index order; copied, never mutated.</param>
         public ChunkData(ChunkCoord coord, int generatorVersion, byte[] baseBlocks, ulong revision = 0, int schemaVersion = CurrentSchemaVersion)
         {
@@ -55,6 +59,7 @@ namespace VoxelRush.World.Chunks
             SchemaVersion = schemaVersion;
             Revision = revision;
             _base = (byte[])baseBlocks.Clone();
+            _effective = (byte[])baseBlocks.Clone();
         }
 
         /// <summary>Restores a persisted chunk: generated base plus stored edits, at the stored revision (no new revisions).</summary>
@@ -71,6 +76,7 @@ namespace VoxelRush.World.Chunks
                 if (chunk._base[edit.Key] != edit.Value)
                 {
                     chunk._edits[edit.Key] = edit.Value;
+                    chunk._effective[edit.Key] = edit.Value;
                 }
             }
 
@@ -91,7 +97,7 @@ namespace VoxelRush.World.Chunks
         /// <summary>Blocks that differ from the generated base.</summary>
         public int EditCount => _edits.Count;
 
-        public byte Get(LocalBlock local) => _edits.TryGetValue((ushort)local.Index, out byte edited) ? edited : _base[local.Index];
+        public byte Get(LocalBlock local) => _effective[local.Index];
 
         public byte GetBase(LocalBlock local) => _base[local.Index];
 
@@ -113,6 +119,7 @@ namespace VoxelRush.World.Chunks
                 _edits[index] = blockId;
             }
 
+            _effective[index] = blockId;
             Revision++;
             return true;
         }
@@ -125,11 +132,7 @@ namespace VoxelRush.World.Chunks
                 throw new ArgumentException($"Destination must be {ChunkMath.Volume} bytes.", nameof(destination));
             }
 
-            Buffer.BlockCopy(_base, 0, destination, 0, ChunkMath.Volume);
-            foreach (KeyValuePair<ushort, byte> edit in _edits)
-            {
-                destination[edit.Key] = edit.Value;
-            }
+            Buffer.BlockCopy(_effective, 0, destination, 0, ChunkMath.Volume);
         }
 
         /// <summary>Sparse edits in ascending local-index order (stable for hashing and serialization).</summary>

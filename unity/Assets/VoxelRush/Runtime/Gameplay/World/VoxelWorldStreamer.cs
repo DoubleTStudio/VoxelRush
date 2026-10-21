@@ -32,9 +32,7 @@ namespace VoxelRush.Gameplay.World
         private readonly List<StreamingObserver> _observers = new List<StreamingObserver>();
         private readonly Dictionary<ChunkCoord, GameObject> _colliders = new Dictionary<ChunkCoord, GameObject>();
         private readonly HashSet<ArcadeVehicle> _waitingToSpawn = new HashSet<ArcadeVehicle>();
-        private readonly ChunkMesher _mesher = new ChunkMesher(BlockAtlas.Default);
-        private readonly ChunkMeshData _meshData = new ChunkMeshData();
-        private readonly List<Vector3> _vertices = new List<Vector3>();
+        private BurstChunkMesher? _mesher;
         private ChunkStreamer? _streamer;
         private IChunkSource? _sourceOverride;
 
@@ -141,7 +139,9 @@ namespace VoxelRush.Gameplay.World
 
         void IChunkBackend.BuildCollider(ChunkData chunk, ChunkData?[] neighbours)
         {
-            _mesher.Build(chunk, neighbours, _meshData);
+            // Burst on this thread: collider builds feed physics this step (VR-070 measured ~10x the managed mesher).
+            _mesher ??= new BurstChunkMesher(BlockAtlas.Default);
+            _mesher.Build(chunk, neighbours);
             if (!_colliders.TryGetValue(chunk.Coord, out GameObject go))
             {
                 go = new GameObject($"ChunkCollider {chunk.Coord.X},{chunk.Coord.Y},{chunk.Coord.Z}");
@@ -154,7 +154,7 @@ namespace VoxelRush.Gameplay.World
 
             var collider = go.GetComponent<MeshCollider>();
             Mesh? mesh = collider.sharedMesh;
-            if (_meshData.IsEmpty)
+            if (_mesher.IsEmpty)
             {
                 // Air chunk: ready, but nothing to collide with.
                 collider.sharedMesh = null;
@@ -167,16 +167,10 @@ namespace VoxelRush.Gameplay.World
                 mesh = new Mesh { name = go.name };
             }
 
-            _vertices.Clear();
-            for (int i = 0; i < _meshData.VertexCount; i++)
-            {
-                _vertices.Add(new Vector3(_meshData.Positions[i * 3], _meshData.Positions[i * 3 + 1], _meshData.Positions[i * 3 + 2]));
-            }
-
             mesh.Clear();
-            mesh.indexFormat = _meshData.VertexCount > ushort.MaxValue ? UnityEngine.Rendering.IndexFormat.UInt32 : UnityEngine.Rendering.IndexFormat.UInt16;
-            mesh.SetVertices(_vertices);
-            mesh.SetTriangles(_meshData.Indices, 0, calculateBounds: true);
+            mesh.indexFormat = _mesher.Positions.Length > ushort.MaxValue ? UnityEngine.Rendering.IndexFormat.UInt32 : UnityEngine.Rendering.IndexFormat.UInt16;
+            mesh.SetVertices(_mesher.Positions.AsArray());
+            mesh.SetIndices(_mesher.Indices.AsArray(), MeshTopology.Triangles, 0, calculateBounds: true);
             // Reassigning makes PhysX re-cook the changed mesh (no stale collision after edits).
             collider.sharedMesh = null;
             collider.sharedMesh = mesh;
@@ -241,6 +235,13 @@ namespace VoxelRush.Gameplay.World
                     GuardClamps++;
                 }
             }
+        }
+
+        private void OnDestroy()
+        {
+            // Native buffers must be released explicitly.
+            _mesher?.Dispose();
+            _mesher = null;
         }
 
         private ChunkStreamer CreateStreamer() => new ChunkStreamer(

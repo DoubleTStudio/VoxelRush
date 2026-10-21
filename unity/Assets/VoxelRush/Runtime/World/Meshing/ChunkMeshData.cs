@@ -37,22 +37,22 @@ namespace VoxelRush.World.Meshing
         internal void AddQuad(int direction, int d, int u, int v, int plane, int i, int j, int width, int height, int tile)
         {
             int start = VertexCount;
-            float[] normal = { 0, 0, 0 };
-            normal[d] = direction % 2 == 0 ? 1 : -1;
+            float nx = 0, ny = 0, nz = 0;
+            Assign(d, direction % 2 == 0 ? 1 : -1, ref nx, ref ny, ref nz);
             for (int corner = 0; corner < 4; corner++)
             {
                 int du = corner == 1 || corner == 2 ? width : 0;
                 int dv = corner >= 2 ? height : 0;
-                float[] position = new float[3];
-                position[d] = plane;
-                position[u] = i + du;
-                position[v] = j + dv;
-                Positions.Add(position[0]);
-                Positions.Add(position[1]);
-                Positions.Add(position[2]);
-                Normals.Add(normal[0]);
-                Normals.Add(normal[1]);
-                Normals.Add(normal[2]);
+                float x = 0, y = 0, z = 0;
+                Assign(d, plane, ref x, ref y, ref z);
+                Assign(u, i + du, ref x, ref y, ref z);
+                Assign(v, j + dv, ref x, ref y, ref z);
+                Positions.Add(x);
+                Positions.Add(y);
+                Positions.Add(z);
+                Normals.Add(nx);
+                Normals.Add(ny);
+                Normals.Add(nz);
                 Uvs.Add(du);
                 Uvs.Add(dv);
                 Tiles.Add(tile);
@@ -70,6 +70,17 @@ namespace VoxelRush.World.Meshing
             {
                 Indices.Add(start); Indices.Add(start + 2); Indices.Add(start + 1);
                 Indices.Add(start); Indices.Add(start + 3); Indices.Add(start + 2);
+            }
+        }
+
+        // Writes one axis of a vector without allocating (the old per-quad float[] showed up as GC churn, VR-070).
+        private static void Assign(int axis, float value, ref float x, ref float y, ref float z)
+        {
+            switch (axis)
+            {
+                case 0: x = value; break;
+                case 1: y = value; break;
+                default: z = value; break;
             }
         }
     }

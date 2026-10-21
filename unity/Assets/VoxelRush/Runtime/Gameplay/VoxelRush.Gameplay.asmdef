@@ -1,7 +1,13 @@
 {
     "name": "VoxelRush.Gameplay",
     "rootNamespace": "VoxelRush.Gameplay",
-    "references": ["VoxelRush.Core", "VoxelRush.World"],
+    "references": [
+        "VoxelRush.Core",
+        "VoxelRush.World",
+        "Unity.Burst",
+        "Unity.Collections",
+        "Unity.Mathematics"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

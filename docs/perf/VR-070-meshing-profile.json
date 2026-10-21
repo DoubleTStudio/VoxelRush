@@ -1,0 +1,13 @@
+{
+  "task": "VR-070",
+  "unity": "6000.3.26f1",
+  "host": "Apple M3 (8 threads), editor EditMode",
+  "chunks": 147,
+  "meanQuadsPerChunk": 157.5,
+  "managedMeshMsPerChunk": 0.266,
+  "burstMeshMsPerChunk": 0.056,
+  "burstSpeedup": 4.8,
+  "paddedFillMsPerChunk": 0.020,
+  "scheduledMainThreadMsPerChunk": 0.024,
+  "physxCookMsPerChunk": 0.075
+}
