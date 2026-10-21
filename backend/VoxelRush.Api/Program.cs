@@ -30,6 +30,7 @@ builder.Services.AddSingleton<WorldStore>();
 builder.Services.AddSingleton<SnapshotStore>();
 builder.Services.AddSingleton<InviteStore>();
 builder.Services.AddSingleton<ProgressionStore>();
+builder.Services.AddSingleton<EntitlementStore>();
 builder.Services.AddProblemDetails();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
@@ -129,6 +130,12 @@ me.MapPut("/settings", async (HttpRequest http, JsonElement settings, ClaimsPrin
     };
 });
 
+// ECON-001: cosmetic catalog and entitlements.
+app.MapGet("/v1/catalog", (EntitlementStore store) => Results.Ok(store.Catalog));
+me.MapGet("/entitlements", async (ClaimsPrincipal user, EntitlementStore store, CancellationToken ct) => Results.Ok(await store.ListAsync(PlayerId(user), ct)));
+me.MapPost("/entitlements/claim", async (ClaimRequest request, ClaimsPrincipal user, EntitlementStore store, CancellationToken ct) =>
+    EntitlementResult(await store.ClaimAsync(PlayerId(user), request.Sku, ct)));
+
 RouteGroupBuilder worlds = app.MapGroup("/v1/worlds").RequireAuthorization().RequireRateLimiting("player");
 worlds.MapPost("/", async (CreateWorldRequest request, ClaimsPrincipal user, WorldStore store, CancellationToken ct) =>
 {
@@ -191,6 +198,13 @@ app.MapPost("/internal/v1/players/{id:guid}/grants", async (Guid id, GrantReques
     return ok ? Results.Ok(result) : Results.Problem(statusCode: StatusCodes.Status400BadRequest, title: "invalid_grant");
 }).AddEndpointFilter(async (context, next) => ServiceAuthorized(context.HttpContext, options) ? await next(context) : Results.Unauthorized());
 
+app.MapPost("/internal/v1/players/{id:guid}/entitlements", async (Guid id, GrantEntitlementRequest request, EntitlementStore store, CancellationToken ct) =>
+    EntitlementResult(await store.GrantAsync(id, request, ct)))
+    .AddEndpointFilter(async (context, next) => ServiceAuthorized(context.HttpContext, options) ? await next(context) : Results.Unauthorized());
+app.MapPost("/internal/v1/entitlements/revoke", async (RevokeEntitlementRequest request, EntitlementStore store, CancellationToken ct) =>
+    await store.RevokeAsync(request, ct) ? Results.NoContent() : Results.NotFound())
+    .AddEndpointFilter(async (context, next) => ServiceAuthorized(context.HttpContext, options) ? await next(context) : Results.Unauthorized());
+
 app.Run();
 
 static Guid PlayerId(ClaimsPrincipal user) => Guid.Parse(user.FindFirstValue(JwtRegisteredClaimNames.Sub)!);
@@ -210,6 +224,15 @@ static IResult SnapshotProblem(SnapshotError error) => error switch
     SnapshotError.NotFound => Results.NotFound(),
     SnapshotError.Missing => Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "object_missing"),
     SnapshotError.ChecksumMismatch => Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "checksum_mismatch"),
+    _ => Results.Problem(statusCode: StatusCodes.Status400BadRequest, title: "invalid_request"),
+};
+
+static IResult EntitlementResult(EntitlementOutcome outcome) => outcome switch
+{
+    EntitlementOutcome.Granted => Results.Ok(new { granted = true }),
+    EntitlementOutcome.AlreadyOwned => Results.Ok(new { granted = false }),
+    EntitlementOutcome.UnknownSku => Results.NotFound(),
+    EntitlementOutcome.NotUnlocked => Results.Problem(statusCode: StatusCodes.Status403Forbidden, title: "not_unlocked"),
     _ => Results.Problem(statusCode: StatusCodes.Status400BadRequest, title: "invalid_request"),
 };
 

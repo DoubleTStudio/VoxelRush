@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "items": [
+    { "sku": "paint.racing-red", "kind": "paint", "name": "Racing Red", "unlock": { "level": 1 } },
+    { "sku": "paint.ocean-blue", "kind": "paint", "name": "Ocean Blue", "unlock": { "level": 2 } },
+    { "sku": "paint.sunset-stripes", "kind": "paint", "name": "Sunset Stripes", "unlock": { "level": 5 } },
+    { "sku": "decal.lightning", "kind": "decal", "name": "Lightning Decal", "unlock": { "level": 3 } },
+    { "sku": "trail.sparks", "kind": "trail", "name": "Spark Trail", "unlock": { "level": 8 } },
+    { "sku": "horn.retro", "kind": "horn", "name": "Retro Horn", "unlock": { "level": 4 } },
+    { "sku": "paint.chrome", "kind": "paint", "name": "Chrome", "unlock": { "store": true } },
+    { "sku": "flag.checkered-gold", "kind": "flag", "name": "Golden Checkered Flag", "unlock": { "store": true } }
+  ]
+}
