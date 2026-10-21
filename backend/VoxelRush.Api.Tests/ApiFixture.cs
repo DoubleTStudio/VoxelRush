@@ -150,6 +150,18 @@ public sealed class ApiHost : IAsyncDisposable
         return client;
     }
 
+    /// <summary>A service client holding the world's lease (headers set), as a game server would.</summary>
+    public async Task<HttpClient> LeasedServiceAsync(Guid world, string holder = "test-server")
+    {
+        HttpResponseMessage response = await Service().PostAsJsonAsync($"/internal/v1/worlds/{world}/lease/acquire", new { holder, ttlSeconds = 120 });
+        response.EnsureSuccessStatusCode();
+        LeaseView lease = (await response.Content.ReadFromJsonAsync<LeaseView>())!;
+        HttpClient client = Service();
+        client.DefaultRequestHeaders.Add("X-Lease-Holder", holder);
+        client.DefaultRequestHeaders.Add("X-Lease-Fencing", lease.Fencing.ToString());
+        return client;
+    }
+
     public async Task<TokenPair> GuestAsync()
     {
         HttpResponseMessage response = await Client().PostAsync("/v1/auth/guest", null);

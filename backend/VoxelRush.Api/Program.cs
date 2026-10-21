@@ -31,6 +31,7 @@ builder.Services.AddSingleton<SnapshotStore>();
 builder.Services.AddSingleton<InviteStore>();
 builder.Services.AddSingleton<ProgressionStore>();
 builder.Services.AddSingleton<EntitlementStore>();
+builder.Services.AddSingleton<LeaseStore>();
 builder.Services.AddProblemDetails();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
@@ -176,9 +177,35 @@ worlds.MapPost("/{id:guid}/join", async (Guid id, ClaimsPrincipal user, WorldSto
     return error == WorldError.None ? Results.Ok(join) : Problem(error);
 });
 
-// Game servers only (service token); clients never see storage URLs.
-RouteGroupBuilder internalApi = app.MapGroup("/internal/v1/worlds/{id:guid}/snapshots").AddEndpointFilter(async (context, next) =>
+// SAVE-005 leases (game servers only).
+RouteGroupBuilder leases = app.MapGroup("/internal/v1/worlds/{id:guid}/lease").AddEndpointFilter(async (context, next) =>
     ServiceAuthorized(context.HttpContext, options) ? await next(context) : Results.Unauthorized());
+leases.MapPost("/acquire", async (Guid id, LeaseRequest request, LeaseStore store, CancellationToken ct) => LeaseResult(await store.AcquireAsync(id, request, ct)));
+leases.MapPost("/renew", async (Guid id, LeaseRequest request, LeaseStore store, CancellationToken ct) => LeaseResult(await store.RenewAsync(id, request, ct)));
+leases.MapPost("/release", async (Guid id, LeaseRequest request, LeaseStore store, CancellationToken ct) => LeaseResult((await store.ReleaseAsync(id, request, ct), null)));
+
+// Game servers only (service token); clients never see storage URLs. World-scoped writes must carry the live
+// lease (X-Lease-Holder / X-Lease-Fencing) so a server that lost its world can't write over the new holder.
+RouteGroupBuilder internalApi = app.MapGroup("/internal/v1/worlds/{id:guid}/snapshots").AddEndpointFilter(async (context, next) =>
+{
+    if (!ServiceAuthorized(context.HttpContext, options))
+    {
+        return Results.Unauthorized();
+    }
+
+    HttpRequest http = context.HttpContext.Request;
+    if (!HttpMethods.IsGet(http.Method))
+    {
+        Guid world = Guid.Parse((string)context.HttpContext.GetRouteValue("id")!);
+        long? fencing = long.TryParse(http.Headers["X-Lease-Fencing"], out long f) ? f : null;
+        if (!await context.HttpContext.RequestServices.GetRequiredService<LeaseStore>().IsCurrentAsync(world, http.Headers["X-Lease-Holder"], fencing, context.HttpContext.RequestAborted))
+        {
+            return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "lease_required");
+        }
+    }
+
+    return await next(context);
+});
 internalApi.MapPost("/upload", async (Guid id, SnapshotUploadRequest request, SnapshotStore store, CancellationToken ct) =>
 {
     (SnapshotError error, PresignedUrl? url) = await store.CreateUploadAsync(id, request, ct);
@@ -224,6 +251,15 @@ static IResult SnapshotProblem(SnapshotError error) => error switch
     SnapshotError.NotFound => Results.NotFound(),
     SnapshotError.Missing => Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "object_missing"),
     SnapshotError.ChecksumMismatch => Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "checksum_mismatch"),
+    _ => Results.Problem(statusCode: StatusCodes.Status400BadRequest, title: "invalid_request"),
+};
+
+static IResult LeaseResult((LeaseOutcome Outcome, LeaseView? Lease) r) => r.Outcome switch
+{
+    LeaseOutcome.Granted => r.Lease == null ? Results.NoContent() : Results.Ok(r.Lease),
+    LeaseOutcome.Held => Results.Json(r.Lease, statusCode: StatusCodes.Status409Conflict),
+    LeaseOutcome.Lost => Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "lease_lost"),
+    LeaseOutcome.NotFound => Results.NotFound(),
     _ => Results.Problem(statusCode: StatusCodes.Status400BadRequest, title: "invalid_request"),
 };
 

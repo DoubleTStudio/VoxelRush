@@ -15,6 +15,7 @@ namespace VoxelRush.Core.Hosting
         public const string WorldDirArgument = "-worldDir";
         public const string RaceAutoStartArgument = "-raceAutoStart";
         public const string WorldIdArgument = "-worldId";
+        public const string IdleShutdownArgument = "-idleShutdownSeconds";
 
         /// <summary>Environment variable holding the base64 join-ticket key (never a command-line argument: those are visible to other users).</summary>
         public const string TicketKeyEnvironment = "VOXELRUSH_TICKET_KEY";
@@ -23,7 +24,7 @@ namespace VoxelRush.Core.Hosting
         // Upper bound keeps a misconfigured smoke run from hanging CI for hours.
         public const int MaxSmokeTestTicks = SimulationConstants.ServerTickRate * 600;
 
-        public ServerLaunchOptions(ushort port, int maxPlayers, int? smokeTestTicks, string? worldDir = null, int? raceAutoStart = null, Guid? worldId = null)
+        public ServerLaunchOptions(ushort port, int maxPlayers, int? smokeTestTicks, string? worldDir = null, int? raceAutoStart = null, Guid? worldId = null, int? idleShutdownSeconds = null)
         {
             if (port == 0)
             {
@@ -51,6 +52,7 @@ namespace VoxelRush.Core.Hosting
             WorldDir = worldDir;
             RaceAutoStart = raceAutoStart;
             WorldId = worldId;
+            IdleShutdownSeconds = idleShutdownSeconds;
         }
 
         public static ServerLaunchOptions Default { get; } =
@@ -72,6 +74,9 @@ namespace VoxelRush.Core.Hosting
         /// <summary>The API world this server hosts; when set, only join tickets for it are admitted (VR-080).</summary>
         public Guid? WorldId { get; }
 
+        /// <summary>When set, the server flushes, releases its world lease and exits after this long with no players (SAVE-005).</summary>
+        public int? IdleShutdownSeconds { get; }
+
         /// <summary>
         /// Parses known arguments; unknown arguments are ignored because the Unity player
         /// receives its own flags (-batchmode, -logFile, ...) on the same command line.
@@ -90,6 +95,7 @@ namespace VoxelRush.Core.Hosting
             string? worldDir = null;
             int? raceAutoStart = null;
             Guid? worldId = null;
+            int? idleShutdownSeconds = null;
 
             for (int i = 0; i < args.Count; i++)
             {
@@ -133,6 +139,17 @@ namespace VoxelRush.Core.Hosting
                         worldDir = value;
                     }
                 }
+                else if (Matches(arg, IdleShutdownArgument))
+                {
+                    if (TryParseBounded(value, 5, 86400, out int idle))
+                    {
+                        idleShutdownSeconds = idle;
+                    }
+                    else
+                    {
+                        errors.Add($"{IdleShutdownArgument} must be an integer in 5..86400 (got '{value}').");
+                    }
+                }
                 else if (Matches(arg, WorldIdArgument))
                 {
                     if (Guid.TryParse(value, out Guid id) && id != Guid.Empty)
@@ -174,12 +191,12 @@ namespace VoxelRush.Core.Hosting
             }
 
             return errors.Count == 0
-                ? ServerLaunchParseResult.Success(new ServerLaunchOptions(port, maxPlayers, smokeTestTicks, worldDir, raceAutoStart, worldId))
+                ? ServerLaunchParseResult.Success(new ServerLaunchOptions(port, maxPlayers, smokeTestTicks, worldDir, raceAutoStart, worldId, idleShutdownSeconds))
                 : ServerLaunchParseResult.Failure(errors);
         }
 
         private static bool IsKnown(string arg) =>
-            Matches(arg, PortArgument) || Matches(arg, MaxPlayersArgument) || Matches(arg, SmokeTestTicksArgument) || Matches(arg, WorldDirArgument) || Matches(arg, RaceAutoStartArgument) || Matches(arg, WorldIdArgument);
+            Matches(arg, PortArgument) || Matches(arg, MaxPlayersArgument) || Matches(arg, SmokeTestTicksArgument) || Matches(arg, WorldDirArgument) || Matches(arg, RaceAutoStartArgument) || Matches(arg, WorldIdArgument) || Matches(arg, IdleShutdownArgument);
 
         private static bool Matches(string arg, string name) =>
             string.Equals(arg, name, StringComparison.OrdinalIgnoreCase);
