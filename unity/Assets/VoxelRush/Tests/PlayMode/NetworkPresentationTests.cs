@@ -286,7 +286,10 @@ namespace VoxelRush.Tests.PlayMode
             Assert.That(UnityEngine.Object.FindAnyObjectByType<VoxelRush.Presentation.Store.CarPaintView>(), Is.Not.Null);
             var builder = UnityEngine.Object.FindAnyObjectByType<PhoneBuilder>();
             Assert.That(builder, Is.Not.Null);
-            builder!.SetMode(PhoneBuilder.Mode.Place);
+            var audio = UnityEngine.Object.FindAnyObjectByType<VoxelRush.Presentation.Audio.GameAudio>();
+            Assert.That(audio, Is.Not.Null, "AUDIO-001 sound effects");
+            Assert.That(audio!.gameObject, Is.SameAs(builder!.gameObject), "hears PhoneBuilder results");
+            builder.SetMode(PhoneBuilder.Mode.Place);
             Assert.That(builder.TapAt(new Vector2(Screen.width / 2f, Screen.height / 2f)), Is.Not.EqualTo(EditRejection.None), "nothing is sent while offline");
             Assert.That(builder.Sent, Is.EqualTo(0));
             builder.SelectBlock(BlockIds.Glass);

@@ -38,6 +38,7 @@ namespace VoxelRush.Networking.Vehicles
         private static readonly Dictionary<ulong, VehicleNetworkDriver> s_byOwner = new Dictionary<ulong, VehicleNetworkDriver>();
 
         private ArcadeVehicle _vehicle = null!;
+        private ClientCar? _shown;
         private Role _role;
         private ServerInputQueue? _serverQueue;
         private ClientInputHistory? _history;
@@ -93,6 +94,8 @@ namespace VoxelRush.Networking.Vehicles
                 ConfigureConditions();
                 NetworkSimulation.Instance.Register(this);
                 LocalPlayer.Vehicle = _vehicle;
+                _shown = new ClientCar(transform, _vehicle, isLocal: true);
+                ClientCars.Add(_shown);
                 Debug.Log(LogEvent.Format("vehicle_owned", ("networkObjectId", NetworkObjectId), ("inputSource", _source?.GetType().Name ?? "none")));
             }
             else
@@ -102,6 +105,8 @@ namespace VoxelRush.Networking.Vehicles
                 ConfigureConditions();
                 _vehicle.Body.isKinematic = true;
                 _vehicle.Body.interpolation = RigidbodyInterpolation.None;
+                _shown = new ClientCar(transform, _vehicle, isLocal: false);
+                ClientCars.Add(_shown);
             }
         }
 
@@ -115,6 +120,12 @@ namespace VoxelRush.Networking.Vehicles
             if (_role == Role.Owner && LocalPlayer.Vehicle == _vehicle)
             {
                 LocalPlayer.Vehicle = null;
+            }
+
+            if (_shown != null)
+            {
+                ClientCars.Remove(_shown);
+                _shown = null;
             }
 
             LogStats();
@@ -305,6 +316,7 @@ namespace VoxelRush.Networking.Vehicles
             if (_role == Role.Remote)
             {
                 _interpolator!.Add(snapshot.ServerTick * (double)NetworkSimulation.Instance.TickSeconds, snapshot.Position, snapshot.Rotation, now);
+                _shown!.RemoteBoosting = snapshot.Boosting;
             }
             else if (_role == Role.Owner)
             {
