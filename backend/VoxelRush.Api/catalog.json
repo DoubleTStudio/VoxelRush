@@ -7,7 +7,7 @@
     { "sku": "decal.lightning", "kind": "decal", "name": "Lightning Decal", "unlock": { "level": 3 } },
     { "sku": "trail.sparks", "kind": "trail", "name": "Spark Trail", "unlock": { "level": 8 } },
     { "sku": "horn.retro", "kind": "horn", "name": "Retro Horn", "unlock": { "level": 4 } },
-    { "sku": "paint.chrome", "kind": "paint", "name": "Chrome", "unlock": { "store": true } },
-    { "sku": "flag.checkered-gold", "kind": "flag", "name": "Golden Checkered Flag", "unlock": { "store": true } }
+    { "sku": "paint.chrome", "kind": "paint", "name": "Chrome", "unlock": { "store": true }, "productId": "voxelrush.paint.chrome" },
+    { "sku": "flag.checkered-gold", "kind": "flag", "name": "Golden Checkered Flag", "unlock": { "store": true }, "productId": "voxelrush.flag.checkered_gold" }
   ]
 }

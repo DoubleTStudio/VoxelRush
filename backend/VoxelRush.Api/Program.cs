@@ -33,6 +33,12 @@ builder.Services.AddSingleton<ProgressionStore>();
 builder.Services.AddSingleton<EntitlementStore>();
 builder.Services.AddSingleton<LeaseStore>();
 builder.Services.AddSingleton<BackupStore>();
+builder.Services.AddHttpClient(GooglePlayVerifier.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(10));
+builder.Services.AddHttpClient(AdRewardService.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(10));
+builder.Services.AddSingleton<AppleVerifier>();
+builder.Services.AddSingleton<GooglePlayVerifier>();
+builder.Services.AddSingleton<PurchaseService>();
+builder.Services.AddSingleton<AdRewardService>();
 builder.Services.AddProblemDetails();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
@@ -137,6 +143,52 @@ app.MapGet("/v1/catalog", (EntitlementStore store) => Results.Ok(store.Catalog))
 me.MapGet("/entitlements", async (ClaimsPrincipal user, EntitlementStore store, CancellationToken ct) => Results.Ok(await store.ListAsync(PlayerId(user), ct)));
 me.MapPost("/entitlements/claim", async (ClaimRequest request, ClaimsPrincipal user, EntitlementStore store, CancellationToken ct) =>
     EntitlementResult(await store.ClaimAsync(PlayerId(user), request.Sku, ct)));
+
+// ECON-002: verified store purchases and refund notifications; rewarded-ad callbacks (off until privacy review).
+me.MapPost("/purchases", async (PurchaseRequest request, ClaimsPrincipal user, PurchaseService purchases, CancellationToken ct) =>
+{
+    (PurchaseOutcome outcome, string? sku) = await purchases.SubmitAsync(PlayerId(user), request, ct);
+    return outcome switch
+    {
+        PurchaseOutcome.Granted => Results.Ok(new { sku, granted = true }),
+        PurchaseOutcome.AlreadyOwned => Results.Ok(new { sku, granted = false }),
+        PurchaseOutcome.Pending => Results.Accepted(value: new { sku, granted = false, pending = true }),
+        PurchaseOutcome.Revoked => Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "purchase_revoked"),
+        PurchaseOutcome.ReceiptInUse => Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "receipt_in_use"),
+        PurchaseOutcome.UnknownProduct => Results.NotFound(),
+        PurchaseOutcome.Unavailable => Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "store_unavailable"),
+        PurchaseOutcome.NotConfigured => Results.Problem(statusCode: StatusCodes.Status501NotImplemented, title: "store_disabled"),
+        _ => Results.Problem(statusCode: StatusCodes.Status400BadRequest, title: "invalid_receipt"),
+    };
+});
+// Store servers call these; authenticity comes from Apple's signature / the push secret, not a player token.
+app.MapPost("/v1/store/apple/notifications", async (AppleNotification body, PurchaseService purchases, CancellationToken ct) =>
+    await purchases.AppleNotificationAsync(body.SignedPayload, ct) is null ? Results.BadRequest() : Results.Ok())
+    .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(64 * 1024));
+app.MapPost("/v1/store/google/notifications", async (string? token, JsonElement body, PurchaseService purchases, CancellationToken ct) =>
+{
+    if (string.IsNullOrEmpty(options.Store.GooglePushToken))
+    {
+        return Results.Problem(statusCode: StatusCodes.Status501NotImplemented, title: "store_disabled");
+    }
+
+    if (token == null || !CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(token), Encoding.UTF8.GetBytes(options.Store.GooglePushToken)))
+    {
+        return Results.Unauthorized();
+    }
+
+    return await purchases.GoogleNotificationAsync(body, ct) is null ? Results.BadRequest() : Results.Ok();
+});
+app.MapGet("/v1/ads/admob/reward", async (HttpContext http, AdRewardService ads, CancellationToken ct) =>
+{
+    if (!options.Ads.Enabled)
+    {
+        return Results.NotFound();
+    }
+
+    AdRewardOutcome outcome = await ads.VerifyAndGrantAsync(http.Request.QueryString.Value, ct);
+    return outcome == AdRewardOutcome.Invalid ? Results.BadRequest() : Results.Ok(new { granted = outcome == AdRewardOutcome.Granted, reason = outcome.ToString() });
+});
 
 RouteGroupBuilder worlds = app.MapGroup("/v1/worlds").RequireAuthorization().RequireRateLimiting("player");
 worlds.MapPost("/", async (CreateWorldRequest request, ClaimsPrincipal user, WorldStore store, CancellationToken ct) =>

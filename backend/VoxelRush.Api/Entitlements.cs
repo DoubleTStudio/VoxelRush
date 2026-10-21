@@ -6,7 +6,8 @@ namespace VoxelRush.Api;
 
 public sealed record CatalogUnlock(int? Level, bool Store);
 
-public sealed record CatalogItem(string Sku, string Kind, string Name, CatalogUnlock Unlock);
+/// <param name="ProductId">App Store / Google Play product id of a store item (ECON-002); null for level unlocks.</param>
+public sealed record CatalogItem(string Sku, string Kind, string Name, CatalogUnlock Unlock, string? ProductId = null);
 
 public sealed record Catalog(int Version, IReadOnlyList<CatalogItem> Items);
 
@@ -46,9 +47,9 @@ public sealed class EntitlementStore(NpgsqlDataSource db, ProgressionStore progr
             ?? throw new InvalidOperationException("catalog.json empty");
         foreach (CatalogItem item in catalog.Items)
         {
-            if (!CosmeticKinds.Contains(item.Kind) || (item.Unlock.Level == null) == !item.Unlock.Store)
+            if (!CosmeticKinds.Contains(item.Kind) || (item.Unlock.Level == null) == !item.Unlock.Store || item.Unlock.Store == string.IsNullOrEmpty(item.ProductId))
             {
-                throw new InvalidOperationException($"Catalog item {item.Sku} must be cosmetic with exactly one unlock rule.");
+                throw new InvalidOperationException($"Catalog item {item.Sku} must be cosmetic with exactly one unlock rule (store items with a product id).");
             }
         }
 
@@ -108,6 +109,14 @@ public sealed class EntitlementStore(NpgsqlDataSource db, ProgressionStore progr
         cmd.Parameters.Add(new() { Value = r.Source ?? string.Empty });
         cmd.Parameters.Add(new() { Value = r.TransactionId ?? string.Empty });
         return await cmd.ExecuteNonQueryAsync(ct) == 1;
+    }
+
+    public async Task<bool> IsRevokedAsync(string source, string transaction, CancellationToken ct)
+    {
+        await using NpgsqlCommand cmd = db.CreateCommand("SELECT 1 FROM player_entitlements WHERE source = $1 AND transaction_id = $2 AND status = 'revoked'");
+        cmd.Parameters.Add(new() { Value = source });
+        cmd.Parameters.Add(new() { Value = transaction });
+        return await cmd.ExecuteScalarAsync(ct) != null;
     }
 
     private async Task<EntitlementOutcome> InsertAsync(Guid player, string sku, string source, string transaction, CancellationToken ct)
