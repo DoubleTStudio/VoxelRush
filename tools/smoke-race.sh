@@ -10,7 +10,8 @@ MODE="${1:-native}"
 LOGS="$ROOT/artifacts/smoke-race"
 WORLD="$LOGS/world"
 PORT=7777
-BOTS=8
+# 8 on main (DoD); CI PRs use 4 because 8 bots + server overload the shared runner.
+BOTS="${RACE_BOTS:-8}"
 IMAGE="voxelrush-server:smoke"
 NETWORK="voxelrush-race"
 BOT_IMAGE="ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac"
