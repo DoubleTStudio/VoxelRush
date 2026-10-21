@@ -54,3 +54,17 @@ Platform settings are code: edit `unity/Assets/VoxelRush/Editor/ProjectConfigura
 VoxelRushServer.x86_64 -batchmode -nographics -logFile - [-port 7777] [-maxPlayers 1..8] [-smokeTestTicks N]
 ```
 Logs are logfmt (`event=server_started port=7777 ...`). Exit codes: `0` success, `2` invalid arguments.
+
+## CI (`.github/workflows/ci.yml`)
+| Job | Runs on | Trigger | Needs Unity secrets |
+|---|---|---|---|
+| Domain tests (.NET) | ubuntu | every PR / push | no |
+| Unity tests + builds: EditMode, PlayMode, Linux server + smoke, Android APK, iOS Xcode project (iOS on `main`/manual) | ubuntu | every PR / push | yes |
+| iOS compile (unsigned) | macOS | `main` / manual | (uses the Xcode project artifact) |
+
+The Unity job installs the pinned editor on the runner (`RageAgainstThePixel/unity-setup`), activates a free **Unity Personal** license (`RageAgainstThePixel/activate-unity-license`), runs the same `tools/*.sh` scripts as local development, and returns the seat afterwards.
+It is one job under a repo-wide concurrency lock, so only one Personal activation is in use at a time.
+It is **skipped with a warning** until these repository secrets exist (Settings > Secrets and variables > Actions):
+- `UNITY_EMAIL`, `UNITY_PASSWORD`: a Unity ID with a Personal license and **2FA disabled** (a dedicated CI account is recommended).
+
+All third-party actions are pinned to commit SHAs. Lint locally with `docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -no-color`.

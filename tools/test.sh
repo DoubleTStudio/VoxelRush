@@ -15,7 +15,11 @@ run_unity() {
   local platform="$1"
   # -runTests exits on its own; -quit would abort the run.
   # Pin a client target: after a server build the editor stays on Dedicated Server and compiles out Presentation.
-  "$ROOT/tools/unity.sh" -buildTarget Android -runTests -testPlatform "$platform" \
+  # UNITY_TEST_BUILD_TARGET="" skips the switch (fresh CI checkouts already start on a client target).
+  local target="${UNITY_TEST_BUILD_TARGET-Android}"
+  local target_args=()
+  [[ -n "$target" ]] && target_args=(-buildTarget "$target")
+  "$ROOT/tools/unity.sh" "${target_args[@]+"${target_args[@]}"}" -runTests -testPlatform "$platform" \
     -testResults "$RESULTS/$platform.xml" -logFile "$RESULTS/$platform.log"
 }
 
