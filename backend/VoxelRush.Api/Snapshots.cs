@@ -34,9 +34,10 @@ public sealed class SnapshotStore(NpgsqlDataSource db, IAmazonS3 s3, ApiOptions 
     public static string KeyFor(Guid world, int x, int y, int z, long revision) =>
         $"worlds/{world:N}/chunks/{x}_{y}_{z}/{revision}.snap";
 
+    // Without storage the routes answer 501 before using the client, but endpoint binding still constructs it.
     public static IAmazonS3 CreateClient(SnapshotStoreOptions o) => new AmazonS3Client(
         new BasicAWSCredentials(o.AccessKey, o.SecretKey),
-        new AmazonS3Config { ServiceURL = o.ServiceUrl, ForcePathStyle = true, AuthenticationRegion = o.Region });
+        new AmazonS3Config { ServiceURL = string.IsNullOrEmpty(o.ServiceUrl) ? "http://storage.invalid" : o.ServiceUrl, ForcePathStyle = true, AuthenticationRegion = o.Region });
 
     public async Task EnsureBucketAsync(CancellationToken ct)
     {

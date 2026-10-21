@@ -41,8 +41,8 @@ namespace VoxelRush.Networking
         /// <summary>Creates the world sync server on this listener (keeps NGO types inside the Networking assembly).</summary>
         public World.WorldSyncServer CreateWorldSync(
             VoxelRush.World.Sync.WorldInfo info, string directory, Func<ulong, UnityEngine.Vector3?> actorEye,
-            Func<IReadOnlyList<VoxelRush.World.Editing.WorldBox>> occupants) =>
-            new World.WorldSyncServer(_manager, info, directory, actorEye, occupants, RoleOf, visitorsCanBuild: !_gate.RequiresTickets);
+            Func<IReadOnlyList<VoxelRush.World.Editing.WorldBox>> occupants, VoxelRush.World.Persistence.ISnapshotRemote? snapshots = null) =>
+            new World.WorldSyncServer(_manager, info, directory, actorEye, occupants, RoleOf, visitorsCanBuild: !_gate.RequiresTickets, snapshots);
 
         /// <summary>A connected client's world role: from its join ticket, or editor on development servers.</summary>
         public VoxelRush.World.Editing.WorldRole RoleOf(ulong clientId) => _gate.RoleOf(clientId) switch

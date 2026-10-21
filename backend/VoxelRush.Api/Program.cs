@@ -193,6 +193,12 @@ RouteGroupBuilder internalApi = app.MapGroup("/internal/v1/worlds/{id:guid}/snap
         return Results.Unauthorized();
     }
 
+    // Explicit, not an error: game servers then keep worlds on local disk only (development, single-host).
+    if (string.IsNullOrEmpty(options.Snapshots.ServiceUrl))
+    {
+        return Results.Problem(statusCode: StatusCodes.Status501NotImplemented, title: "storage_disabled");
+    }
+
     HttpRequest http = context.HttpContext.Request;
     if (!HttpMethods.IsGet(http.Method))
     {
