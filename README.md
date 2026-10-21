@@ -59,6 +59,7 @@ Platform settings are code: edit `unity/Assets/VoxelRush/Editor/ProjectConfigura
 ## Controls
 Landscape touch HUD (`Client.unity` → `TouchHud`): ◀ ▶ steer bottom-left; GAS, BRAKE, BOOST, DRIFT (handbrake) bottom-right; BUILD top centre, with HORN beside it while a horn is equipped; all inside the device safe area.
 The `Driving` action map is defined in code (`Presentation/Input/DrivingControls.cs`); touch buttons emulate a virtual gamepad, so touch, gamepad (stick/triggers/face buttons) and keyboard (WASD/arrows, Shift boost, Space drift, B build, H horn) share one map.
+Racing: checkpoints are drawn in the world (next = bright with V chevrons, passed = lowered and dark, finish = checkered); the top-left panel shows speed, an arrow and distance to the next checkpoint and the race time. Vibration can be turned off in the pause menu.
 
 ## Dedicated server
 ```
