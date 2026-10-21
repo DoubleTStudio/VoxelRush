@@ -49,6 +49,8 @@ namespace VoxelRush.Tests.EditMode
         public void Apply_IsUndoneOnDispose_SoNothingLeaksIntoProjectSettings()
         {
             string keystore = Path.GetTempFileName();
+            File.WriteAllBytes(keystore, new byte[] { 1, 2, 3, 4 });
+            string? copy = null;
             try
             {
                 ReleaseSettings settings = From(new Dictionary<string, string>
@@ -67,7 +69,10 @@ namespace VoxelRush.Tests.EditMode
                 using (settings.Apply())
                 {
                     Assert.That(PlayerSettings.Android.useCustomKeystore, Is.True);
-                    Assert.That(PlayerSettings.Android.keystoreName, Is.EqualTo(keystore));
+                    string used = PlayerSettings.Android.keystoreName;
+                    Assert.That(used, Does.StartWith("Temp/release-signing/"), "project-relative copy");
+                    Assert.That(File.ReadAllBytes(used), Is.EqualTo(File.ReadAllBytes(keystore)));
+                    copy = used;
                     Assert.That(PlayerSettings.Android.keyaliasName, Is.EqualTo("upload"));
                     Assert.That(PlayerSettings.bundleVersion, Is.EqualTo("9.8.7"));
                     Assert.That(PlayerSettings.Android.bundleVersionCode, Is.EqualTo(4242));
@@ -78,6 +83,7 @@ namespace VoxelRush.Tests.EditMode
                     PlayerSettings.Android.bundleVersionCode, PlayerSettings.iOS.buildNumber), Is.EqualTo(before));
                 Assert.That(PlayerSettings.Android.keystorePass, Is.Empty);
                 Assert.That(PlayerSettings.Android.keyaliasPass, Is.Empty);
+                Assert.That(File.Exists(copy), Is.False, "the signing copy is deleted");
             }
             finally
             {
