@@ -76,7 +76,7 @@ docker compose -f docker/compose.yaml up --build
 
 ## Networked driving
 The server spawns one car per player on the shared `Arena`; physics ticks at 30 Hz. Owners predict and reconcile; other cars are interpolated (`docs/adr/ADR-015-authoritative-vehicle-netcode.md`).
-Development builds accept `-simRttMs N [-simJitterMs J] [-simLossPercent L]` to simulate network conditions for gameplay messages. Bots accept `-botDrive` (scripted driving) and `-botCheat` (sends speed-hack inputs the server must reject).
+Development builds accept `-simRttMs N [-simJitterMs J] [-simLossPercent L]` to simulate network conditions for gameplay messages. Bots accept `-botDrive` (scripted driving), `-botCheat` (sends speed-hack inputs the server must reject) and `-botPaint <sku>` (asks to show a paint; the server checks ownership).
 
 ## Test client and bots
 Clients connect with `-connect host:port [-smokeTestSeconds N]` (exit `0` stayed connected, `3` connect failed or rejected).

@@ -180,8 +180,90 @@ namespace VoxelRush.Tests.PlayMode
             Assert.That(VoxelRush.Presentation.Store.GarageMenu.StateOf(levelGated, 2, owned: false), Is.EqualTo("claim"));
             Assert.That(VoxelRush.Presentation.Store.GarageMenu.StateOf(storeOnly, 99, owned: false), Is.EqualTo("buy"), "levels never unlock store items");
             Assert.That(VoxelRush.Presentation.Store.GarageMenu.StateOf(storeOnly, 1, owned: true), Is.EqualTo("owned"));
-            Assert.That(VoxelRush.Presentation.Store.GarageMenu.PaintColor("paint.racing-red"), Is.Not.Null);
-            Assert.That(VoxelRush.Presentation.Store.GarageMenu.PaintColor("decal.lightning"), Is.Null);
+            Assert.That(VoxelRush.Presentation.Store.PaintPalette.ColorOf("paint.racing-red"), Is.Not.Null);
+            Assert.That(VoxelRush.Presentation.Store.PaintPalette.ColorOf("decal.lightning"), Is.Null);
+        }
+
+        [Test]
+        public void PaintPalette_HasAColourForEveryPaintTheServerCanShow()
+        {
+            foreach (string sku in VoxelRush.Core.Cosmetics.PaintCatalog.Skus)
+            {
+                Assert.That(VoxelRush.Presentation.Store.PaintPalette.ColorOf(sku), Is.Not.Null, sku);
+            }
+        }
+
+        // COSM-001: a remote car's body shows its owner's server-confirmed paint; wheels keep their colour.
+        [Test]
+        public void CarPaintView_PaintsARemoteCar_FromTheServerConfirmedSku()
+        {
+            Transform car = PaintableCar("RemoteCar", out Renderer body, out Renderer cabin, out Renderer wheel);
+            var view = Add<VoxelRush.Presentation.Store.CarPaintView>("CarPaintView");
+            try
+            {
+                VoxelRush.Networking.Vehicles.CarPaints.Set(car, "paint.ocean-blue");
+
+                Color blue = Stored(VoxelRush.Presentation.Store.PaintPalette.ColorOf("paint.ocean-blue")!.Value);
+                Assert.That(BaseColorOf(body), Is.EqualTo(blue));
+                Assert.That(BaseColorOf(cabin), Is.EqualTo(blue));
+                Assert.That(wheel.HasPropertyBlock(), Is.False, "wheels keep their colour");
+
+                VoxelRush.Networking.Vehicles.CarPaints.Set(car, string.Empty);
+                Assert.That(body.HasPropertyBlock(), Is.False, "back to the default colour");
+            }
+            finally
+            {
+                VoxelRush.Networking.Vehicles.CarPaints.Remove(car);
+            }
+        }
+
+        [Test]
+        public void CarPaintView_PaintsCarsThatSpawnedBeforeIt()
+        {
+            Transform car = PaintableCar("EarlyCar", out Renderer body, out _, out _);
+            try
+            {
+                VoxelRush.Networking.Vehicles.CarPaints.Set(car, "paint.chrome");
+                Add<VoxelRush.Presentation.Store.CarPaintView>("CarPaintView");
+
+                Assert.That(BaseColorOf(body), Is.EqualTo(Stored(VoxelRush.Presentation.Store.PaintPalette.ColorOf("paint.chrome")!.Value)));
+            }
+            finally
+            {
+                VoxelRush.Networking.Vehicles.CarPaints.Remove(car);
+            }
+        }
+
+        private Transform PaintableCar(string name, out Renderer body, out Renderer cabin, out Renderer wheel)
+        {
+            var car = Add<Transform>(name);
+            Renderer Part(string part, Transform parent)
+            {
+                var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                go.name = part;
+                go.transform.SetParent(parent, false);
+                return go.GetComponent<Renderer>();
+            }
+
+            body = Part("Body", car);
+            cabin = Part("Cabin", car);
+            wheel = Part("Tyre", Part("WheelFL", car).transform);
+            return car;
+        }
+
+        // The colour as a property block stores it (colour-space conversion included).
+        private static Color Stored(Color color)
+        {
+            var block = new MaterialPropertyBlock();
+            block.SetColor(VoxelRush.Presentation.Store.PaintPalette.BaseColor, color);
+            return block.GetColor(VoxelRush.Presentation.Store.PaintPalette.BaseColor);
+        }
+
+        private static Color BaseColorOf(Renderer renderer)
+        {
+            var block = new MaterialPropertyBlock();
+            renderer.GetPropertyBlock(block);
+            return block.GetColor(VoxelRush.Presentation.Store.PaintPalette.BaseColor);
         }
 
         [UnityTest]
@@ -192,6 +274,7 @@ namespace VoxelRush.Tests.PlayMode
             Assert.That(Camera.main!.GetComponent<ChaseCamera>(), Is.Not.Null);
             Assert.That(UnityEngine.Object.FindAnyObjectByType<NetworkWorldView>(), Is.Not.Null);
             Assert.That(UnityEngine.Object.FindAnyObjectByType<VoxelRush.Presentation.Store.GarageMenu>(), Is.Not.Null);
+            Assert.That(UnityEngine.Object.FindAnyObjectByType<VoxelRush.Presentation.Store.CarPaintView>(), Is.Not.Null);
             var builder = UnityEngine.Object.FindAnyObjectByType<PhoneBuilder>();
             Assert.That(builder, Is.Not.Null);
             builder!.SetMode(PhoneBuilder.Mode.Place);

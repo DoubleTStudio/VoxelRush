@@ -13,6 +13,9 @@ public sealed record Catalog(int Version, IReadOnlyList<CatalogItem> Items);
 
 public sealed record EntitlementView(string Sku, string Source, DateTimeOffset GrantedAt);
 
+/// <summary>What game servers see of a player's inventory: active SKUs only (COSM-001).</summary>
+public sealed record OwnedSkusView(IReadOnlyList<string> Skus);
+
 public sealed record ClaimRequest(string? Sku);
 
 public sealed record GrantEntitlementRequest(string? Sku, string? Source, string? TransactionId);

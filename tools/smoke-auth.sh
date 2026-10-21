@@ -10,7 +10,8 @@ MODE="${1:-native}"
 LOGS="$ROOT/artifacts/smoke-auth"
 NET="voxelrush-auth"
 API="http://127.0.0.1:18080"
-PORT=7777
+# SMOKE_PORT: another local server may already hold 7777.
+PORT="${SMOKE_PORT:-7777}"
 BOT_IMAGE="ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac"
 pids=()
 

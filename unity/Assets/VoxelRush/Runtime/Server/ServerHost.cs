@@ -1,6 +1,7 @@
 using System;
 using UnityEngine;
 using VoxelRush.Core;
+using VoxelRush.Core.Cosmetics;
 using VoxelRush.Core.Diagnostics;
 using VoxelRush.Core.Hosting;
 using VoxelRush.Core.Networking;
@@ -35,6 +36,8 @@ namespace VoxelRush.Server
         private WorldSyncServer? _world;
         private RaceServer? _race;
         private RewardClient? _rewards;
+        private EntitlementClient? _entitlements;
+        private PaintServer? _paint;
         private LeaseClient? _lease;
         private ApiSnapshotRemote? _snapshots;
         private double _emptySince = -1;
@@ -192,6 +195,22 @@ namespace VoxelRush.Server
             }
 
             _race = _network.CreateRace(ArenaTrack.Create(), _vehicles, Options.RaceAutoStart, _rewards == null ? null : _rewards.Enqueue);
+
+            // COSM-001: with tickets a paint shows only if the API says the player owns it (fail closed without the API);
+            // development servers have no identities, so any catalog paint shows.
+            PaintAuthority paints;
+            if (tickets == null)
+            {
+                paints = PaintAuthority.Development();
+            }
+            else
+            {
+                _entitlements = EntitlementClient.FromEnvironment();
+                paints = _entitlements != null ? PaintAuthority.Verified(_entitlements.OwnedAsync) : PaintAuthority.DefaultOnly();
+            }
+
+            _paint = new PaintServer(paints, _vehicles, _network.SessionOf);
+            Debug.Log(LogEvent.Format("server_paint", ("mode", _paint.Mode)));
             _simulation = NetworkSimulation.Instance;
             _nextMetricsAt = Time.realtimeSinceStartupAsDouble + MetricsIntervalSeconds;
             NetworkBandwidth.Meter.Flush(Time.realtimeSinceStartupAsDouble);
@@ -206,6 +225,7 @@ namespace VoxelRush.Server
             {
                 Debug.Log(LogEvent.Format("client_disconnected", ("clientId", clientId), ("players", players)));
                 _vehicles.Despawn(clientId);
+                _paint?.OnClientDisconnected(clientId);
                 _world.OnClientDisconnected(clientId);
                 _race.OnClientDisconnected(clientId, CurrentTick);
             };
@@ -229,6 +249,7 @@ namespace VoxelRush.Server
             _network?.Tick(now);
             _world?.Tick(CurrentTick, now);
             _race?.Tick(CurrentTick);
+            _paint?.Tick(now);
             if (_simulation != null && now >= _nextMetricsAt)
             {
                 _nextMetricsAt = now + MetricsIntervalSeconds;
@@ -291,6 +312,7 @@ namespace VoxelRush.Server
         {
             _rewards?.Dispose();
             _rewards = null;
+            DisposePaint();
             _world?.Dispose();
             _world = null;
             _snapshots?.Dispose();
@@ -302,6 +324,7 @@ namespace VoxelRush.Server
 
         private void Shutdown(int exitCode, string reason)
         {
+            DisposePaint();
             _world?.Dispose();
             _world = null;
             _snapshots?.Dispose();
@@ -325,6 +348,14 @@ namespace VoxelRush.Server
             {
                 Application.Quit(exitCode);
             }
+        }
+
+        private void DisposePaint()
+        {
+            _paint?.Dispose();
+            _paint = null;
+            _entitlements?.Dispose();
+            _entitlements = null;
         }
 
         private void ReleaseLease()

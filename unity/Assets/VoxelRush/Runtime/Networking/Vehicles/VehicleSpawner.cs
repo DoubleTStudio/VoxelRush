@@ -55,6 +55,10 @@ namespace VoxelRush.Networking.Vehicles
         public VoxelRush.Gameplay.Vehicles.ArcadeVehicle? VehicleOf(ulong clientId) =>
             _cars.TryGetValue(clientId, out NetworkObject car) && car != null ? car.GetComponent<VoxelRush.Gameplay.Vehicles.ArcadeVehicle>() : null;
 
+        /// <summary>The paint component of a player's car, if spawned (COSM-001).</summary>
+        public VehiclePaint? PaintOf(ulong clientId) =>
+            _cars.TryGetValue(clientId, out NetworkObject car) && car != null ? car.GetComponent<VehiclePaint>() : null;
+
         /// <summary>Grid slot <paramref name="slot"/>: the scene's spawn points in order (a row fallback without any).</summary>
         public (Vector3 Position, Quaternion Rotation) GridPose(int slot) =>
             slot < _spawnPoints.Count ? (_spawnPoints[slot].position, _spawnPoints[slot].rotation) : (new Vector3(slot * 6f, 1.5f, 0f), Quaternion.identity);
