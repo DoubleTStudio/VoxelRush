@@ -2,7 +2,7 @@ name: CI
 
 on:
   pull_request:
-    # labeled: adding "full-ci" to a PR runs the full suite.
+    # labeled: "unity-ci" runs the Unity gate on a PR, "full-ci" the full suite.
     types: [opened, synchronize, reopened, labeled]
   push:
     branches: [main]
@@ -106,10 +106,15 @@ jobs:
           fi
 
   # One job so a run holds a single Personal license activation; the lock serialises runs across PRs.
+  # CI-003: PRs only queue for the license when labelled, so they can't evict main's pending full suite.
   unity:
     name: Unity tests + builds
     needs: [domain-tests, unity-license, changes]
-    if: needs.unity-license.outputs.available == 'true' && needs.changes.outputs.unity == 'true'
+    if: >-
+      needs.unity-license.outputs.available == 'true' && needs.changes.outputs.unity == 'true' &&
+      (github.event_name != 'pull_request' ||
+       contains(github.event.pull_request.labels.*.name, 'unity-ci') ||
+       contains(github.event.pull_request.labels.*.name, 'full-ci'))
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     outputs:

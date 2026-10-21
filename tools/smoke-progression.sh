@@ -78,7 +78,12 @@ bot "$LOGS/b.log" -joinTicket "$(ticket "$b_token")" -botRace -botEquip paint.ch
 wait "$A" || fail "racer A failed"; wait "$B" || fail "racer B failed"
 wait "$SERVER_PID" || fail "server exited non-zero"
 grep -q "event=race_rewards_queued .*grants=2" "$LOGS/server.log" || fail "server did not queue 2 rewards"
-[[ $(grep -c "event=reward_grant_sent .*status=200" "$LOGS/server.log") -eq 2 ]] || fail "rewards not confirmed by the API"
+# Auto-start can run a second race inside the bots' window; the assertions are about the first one.
+first_race=$(sed -nE 's/.*event=race_rewards_queued raceId=([0-9a-f-]+) .*/\1/p' "$LOGS/server.log" | head -1)
+first_xp=$(grep "event=reward_grant_sent grantKey=race:${first_race//-/}:.*status=200" "$LOGS/server.log" | sed -nE 's/.* xp=([0-9]+) .*/\1/p' | sort -n | tr '\n' ' ')
+[[ "$first_xp" == "100 125 " ]] || fail "first race rewards not confirmed by the API (xp: $first_xp)"
+confirmed_xp=$(grep "event=reward_grant_sent .*status=200" "$LOGS/server.log" | sed -nE 's/.* xp=([0-9]+) .*/\1/p' | awk '{ s += $1 } END { print s + 0 }')
+if grep "event=reward_grant_sent" "$LOGS/server.log" | grep -qv "status=200"; then fail "a reward grant was not confirmed"; fi
 
 grep -q "event=server_cosmetics mode=Verified" "$LOGS/server.log" || fail "server not verifying cosmetic ownership"
 grep -q "event=vehicle_cosmetic_applied .*kind=paint sku=paint.racing-red" "$LOGS/server.log" || fail "owned paint not applied"
@@ -106,8 +111,8 @@ echo "horn: $relayed presses relayed (rate-limited), B heard $heard, B's presses
 xp() { curl -fsS "$API/v1/players/me/progress" -H "Authorization: Bearer $1" | json "['xp']"; }
 xa=$(xp "$a_token"); xb=$(xp "$b_token")
 [[ "$xa" -gt 0 && "$xb" -gt 0 ]] || fail "XP not granted (A=$xa B=$xb)"
-# Winner 100 + 25 per racer beaten, runner-up 100.
-[[ $((xa + xb)) -eq 225 ]] || fail "expected 125 + 100 XP for a 2-player race, got $xa + $xb"
+# Winner 100 + 25 per racer beaten, runner-up 100 (checked above); the API holds exactly what was granted.
+[[ $((xa + xb)) -eq $confirmed_xp ]] || fail "expected $confirmed_xp XP from confirmed grants, got $xa + $xb"
 
 # Cross-device: the winner links a second device and sees the same progression.
 code=$(curl -fsS -X POST "$API/v1/auth/link-code" -H "Authorization: Bearer $a_token" | json "['code']")
