@@ -124,6 +124,29 @@ namespace VoxelRush.Tests.EditMode
         }
 
         [Test]
+        public void LinkCode_FromOneDevice_SignsTheOtherIntoTheSameAccount()
+        {
+            var phoneA = new FakeTransport();
+            PlayerApi a = Api(phoneA, new MemoryTokens());
+            phoneA.Replies.Enqueue((200, Pair));
+            phoneA.Replies.Enqueue((200, "{\"code\":\"K7Q2MX\",\"expiresAt\":\"2030-01-01T00:00:00Z\"}"));
+            Assert.That(a.CreateLinkCodeAsync().GetAwaiter().GetResult().Value, Is.EqualTo("K7Q2MX"));
+
+            var phoneB = new FakeTransport();
+            var tokensB = new MemoryTokens { Value = "guest-b" };
+            PlayerApi b = Api(phoneB, tokensB);
+            phoneB.Replies.Enqueue((200, Rotated));
+            ApiResult<string> linked = b.RedeemLinkCodeAsync(" K7Q2MX ").GetAwaiter().GetResult();
+
+            Assert.That(linked.Value, Is.EqualTo("p1"));
+            Assert.That(phoneB.Requests[0].Json, Is.EqualTo("{\"code\":\"K7Q2MX\"}"));
+            Assert.That(tokensB.Value, Is.EqualTo("r2"), "the linked account replaces the device's guest");
+
+            phoneB.Replies.Enqueue((404, string.Empty));
+            Assert.That(b.RedeemLinkCodeAsync("WRONG").GetAwaiter().GetResult().Error, Does.Contain("wrong or expired"));
+        }
+
+        [Test]
         public void WorldNames_AreJsonEscaped()
         {
             var http = new FakeTransport();
