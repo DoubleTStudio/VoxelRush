@@ -13,12 +13,13 @@ namespace VoxelRush.Core.Hosting
         public const string MaxPlayersArgument = "-maxPlayers";
         public const string SmokeTestTicksArgument = "-smokeTestTicks";
         public const string WorldDirArgument = "-worldDir";
+        public const string RaceAutoStartArgument = "-raceAutoStart";
         private const int MaxWorldDirLength = 512;
 
         // Upper bound keeps a misconfigured smoke run from hanging CI for hours.
         public const int MaxSmokeTestTicks = SimulationConstants.ServerTickRate * 600;
 
-        public ServerLaunchOptions(ushort port, int maxPlayers, int? smokeTestTicks, string? worldDir = null)
+        public ServerLaunchOptions(ushort port, int maxPlayers, int? smokeTestTicks, string? worldDir = null, int? raceAutoStart = null)
         {
             if (port == 0)
             {
@@ -38,7 +39,13 @@ namespace VoxelRush.Core.Hosting
             Port = port;
             MaxPlayers = maxPlayers;
             SmokeTestTicks = smokeTestTicks;
+            if (raceAutoStart is int racers && (racers < 1 || racers > maxPlayers))
+            {
+                throw new ArgumentOutOfRangeException(nameof(raceAutoStart));
+            }
+
             WorldDir = worldDir;
+            RaceAutoStart = raceAutoStart;
         }
 
         public static ServerLaunchOptions Default { get; } =
@@ -53,6 +60,9 @@ namespace VoxelRush.Core.Hosting
 
         /// <summary>Directory for the world journal and snapshots; null uses the default under $HOME.</summary>
         public string? WorldDir { get; }
+
+        /// <summary>When set, a race countdown starts as soon as this many players are waiting (test/dev lobbies).</summary>
+        public int? RaceAutoStart { get; }
 
         /// <summary>
         /// Parses known arguments; unknown arguments are ignored because the Unity player
@@ -70,6 +80,7 @@ namespace VoxelRush.Core.Hosting
             int maxPlayers = SimulationConstants.MaxPlayersPerServer;
             int? smokeTestTicks = null;
             string? worldDir = null;
+            int? raceAutoStart = null;
 
             for (int i = 0; i < args.Count; i++)
             {
@@ -113,6 +124,17 @@ namespace VoxelRush.Core.Hosting
                         worldDir = value;
                     }
                 }
+                else if (Matches(arg, RaceAutoStartArgument))
+                {
+                    if (TryParseBounded(value, 1, SimulationConstants.MaxPlayersPerServer, out int racers))
+                    {
+                        raceAutoStart = racers;
+                    }
+                    else
+                    {
+                        errors.Add($"{RaceAutoStartArgument} must be an integer in 1..{SimulationConstants.MaxPlayersPerServer} (got '{value}').");
+                    }
+                }
                 else if (Matches(arg, SmokeTestTicksArgument))
                 {
                     if (TryParseBounded(value, 1, MaxSmokeTestTicks, out int ticks))
@@ -126,13 +148,18 @@ namespace VoxelRush.Core.Hosting
                 }
             }
 
+            if (raceAutoStart > maxPlayers)
+            {
+                errors.Add($"{RaceAutoStartArgument} can't exceed {MaxPlayersArgument} ({maxPlayers}).");
+            }
+
             return errors.Count == 0
-                ? ServerLaunchParseResult.Success(new ServerLaunchOptions(port, maxPlayers, smokeTestTicks, worldDir))
+                ? ServerLaunchParseResult.Success(new ServerLaunchOptions(port, maxPlayers, smokeTestTicks, worldDir, raceAutoStart))
                 : ServerLaunchParseResult.Failure(errors);
         }
 
         private static bool IsKnown(string arg) =>
-            Matches(arg, PortArgument) || Matches(arg, MaxPlayersArgument) || Matches(arg, SmokeTestTicksArgument) || Matches(arg, WorldDirArgument);
+            Matches(arg, PortArgument) || Matches(arg, MaxPlayersArgument) || Matches(arg, SmokeTestTicksArgument) || Matches(arg, WorldDirArgument) || Matches(arg, RaceAutoStartArgument);
 
         private static bool Matches(string arg, string name) =>
             string.Equals(arg, name, StringComparison.OrdinalIgnoreCase);

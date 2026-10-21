@@ -55,6 +55,16 @@ namespace VoxelRush.Tests.Domain.Hosting
         }
 
         [Test]
+        public void Parse_RaceAutoStart()
+        {
+            Assert.That(ServerLaunchOptions.Parse(new[] { "-raceAutoStart", "8" }).Options!.RaceAutoStart, Is.EqualTo(8));
+            Assert.That(ServerLaunchOptions.Parse(Array.Empty<string>()).Options!.RaceAutoStart, Is.Null);
+            Assert.That(ServerLaunchOptions.Parse(new[] { "-raceAutoStart", "0" }).IsSuccess, Is.False);
+            Assert.That(ServerLaunchOptions.Parse(new[] { "-raceAutoStart", "9" }).IsSuccess, Is.False);
+            Assert.That(ServerLaunchOptions.Parse(new[] { "-maxPlayers", "2", "-raceAutoStart", "4" }).IsSuccess, Is.False, "more racers than players");
+        }
+
+        [Test]
         public void Parse_WorldDir()
         {
             Assert.That(ServerLaunchOptions.Parse(new[] { "-worldDir", "/data/world-1" }).Options!.WorldDir, Is.EqualTo("/data/world-1"));

@@ -7,29 +7,59 @@ namespace VoxelRush.Tests.Domain.Networking
 {
     public sealed class ConnectionGateTests
     {
-        private const ushort Version = 1;
-        private static readonly byte[] ValidPayload = ConnectionPayload.Encode(Version);
+        private const ushort Version = 2;
+
+        // A fresh client session each time.
+        private static byte[] ValidPayload => ConnectionPayload.Encode(Version, Guid.NewGuid());
 
         [Test]
         public void Payload_RoundTrips()
         {
-            Assert.That(ConnectionPayload.TryDecode(ConnectionPayload.Encode(0xBEEF), out ushort version), Is.True);
+            var session = Guid.NewGuid();
+            Assert.That(ConnectionPayload.TryDecode(ConnectionPayload.Encode(0xBEEF, session), out ushort version, out Guid decoded), Is.True);
             Assert.That(version, Is.EqualTo(0xBEEF));
+            Assert.That(decoded, Is.EqualTo(session));
         }
 
         [TestCase(0)]
         [TestCase(1)]
         [TestCase(3)]
+        [TestCase(17)]
+        [TestCase(19)]
         [TestCase(1024)]
         public void Payload_WrongLength_IsMalformed(int length)
         {
-            Assert.That(ConnectionPayload.TryDecode(new byte[length], out _), Is.False);
+            Assert.That(ConnectionPayload.TryDecode(new byte[length], out _, out _), Is.False);
         }
 
         [Test]
         public void Payload_Null_IsMalformed()
         {
-            Assert.That(ConnectionPayload.TryDecode(null, out _), Is.False);
+            Assert.That(ConnectionPayload.TryDecode(null, out _, out _), Is.False);
+        }
+
+        [Test]
+        public void LegacyProtocol1Payload_IsAProtocolMismatch_NotMalformed()
+        {
+            var gate = new ConnectionGate(8, Version);
+
+            Assert.That(gate.TryAdmit(1, new byte[] { 1, 0 }, 0), Is.EqualTo(ConnectionRejection.ProtocolMismatch));
+            Assert.That(gate.TryAdmit(2, ConnectionPayload.Encode(Version, Guid.Empty), 0), Is.EqualTo(ConnectionRejection.ProtocolMismatch), "v2 without a session");
+        }
+
+        [Test]
+        public void SameSession_OnTwoConnections_IsRefused_UntilTheFirstIsReleased()
+        {
+            var gate = new ConnectionGate(8, Version);
+            byte[] payload = ConnectionPayload.Encode(Version, Guid.NewGuid());
+
+            Assert.That(gate.TryAdmit(1, payload, 0), Is.EqualTo(ConnectionRejection.None));
+            Assert.That(gate.TryAdmit(2, payload, 0), Is.EqualTo(ConnectionRejection.SessionInUse));
+            gate.Release(1);
+            Assert.That(gate.TryAdmit(3, payload, 1), Is.EqualTo(ConnectionRejection.None), "clean reconnect");
+            Assert.That(gate.SessionOf(3), Is.Not.EqualTo(Guid.Empty));
+            Assert.That(gate.SessionOf(1), Is.EqualTo(Guid.Empty));
+            Assert.That(ConnectionRejection.SessionInUse.ToReasonCode(), Is.EqualTo("session_in_use"));
         }
 
         [Test]
@@ -61,7 +91,7 @@ namespace VoxelRush.Tests.Domain.Networking
 
             Assert.That(gate.TryAdmit(1, null, 0), Is.EqualTo(ConnectionRejection.MalformedPayload));
             Assert.That(gate.TryAdmit(2, new byte[] { 1, 0, 0 }, 0), Is.EqualTo(ConnectionRejection.MalformedPayload));
-            Assert.That(gate.TryAdmit(3, ConnectionPayload.Encode(2), 0), Is.EqualTo(ConnectionRejection.ProtocolMismatch));
+            Assert.That(gate.TryAdmit(3, ConnectionPayload.Encode(3, Guid.NewGuid()), 0), Is.EqualTo(ConnectionRejection.ProtocolMismatch));
             Assert.That(gate.Count, Is.Zero);
         }
 
@@ -70,8 +100,10 @@ namespace VoxelRush.Tests.Domain.Networking
         {
             var gate = new ConnectionGate(2, Version);
 
-            gate.TryAdmit(7, ValidPayload, 0);
-            Assert.That(gate.TryAdmit(7, ValidPayload, 1), Is.EqualTo(ConnectionRejection.None));
+            byte[] payload = ValidPayload;
+            gate.TryAdmit(7, payload, 0);
+            Assert.That(gate.TryAdmit(7, payload, 1), Is.EqualTo(ConnectionRejection.None));
+            Assert.That(gate.TryAdmit(7, ValidPayload, 1), Is.EqualTo(ConnectionRejection.SessionInUse), "same id, different session");
             Assert.That(gate.Count, Is.EqualTo(1));
         }
 

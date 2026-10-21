@@ -13,6 +13,7 @@ namespace VoxelRush.Tests.EditMode
         // Matched by name: Presentation is compiled out while the editor targets the dedicated server.
         [TestCase(BuildEntryPoints.ClientScene, "VoxelRush.Presentation.ClientSmokeProbe")]
         [TestCase(BuildEntryPoints.ClientScene, "VoxelRush.Networking.ClientBootstrap")]
+        [TestCase(BuildEntryPoints.ClientScene, "VoxelRush.Presentation.UI.RaceHud")]
         [TestCase(BuildEntryPoints.BotScene, "VoxelRush.Networking.ClientBootstrap")]
         [TestCase(BuildEntryPoints.ServerScene, "VoxelRush.Server.ServerHost")]
         public void Scene_ContainsExactlyOneEntryComponent(string scenePath, string componentType)
