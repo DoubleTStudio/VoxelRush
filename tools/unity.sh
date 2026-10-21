@@ -28,4 +28,7 @@ if [[ ! -x "$UNITY_EDITOR" ]]; then
   exit 1
 fi
 
-exec "$UNITY_EDITOR" -batchmode -nographics -projectPath "$PROJECT" "$@"
+# UNITY_GRAPHICS=1 keeps the GPU device (e.g. to render screenshots); default is headless.
+GRAPHICS=(-nographics)
+[[ "${UNITY_GRAPHICS:-0}" == "1" ]] && GRAPHICS=()
+exec "$UNITY_EDITOR" -batchmode "${GRAPHICS[@]+"${GRAPHICS[@]}"}" -projectPath "$PROJECT" "$@"

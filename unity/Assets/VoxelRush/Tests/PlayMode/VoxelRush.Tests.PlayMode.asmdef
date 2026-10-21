@@ -3,6 +3,7 @@
     "rootNamespace": "VoxelRush.Tests.PlayMode",
     "references": [
         "VoxelRush.Core",
+        "VoxelRush.World",
         "VoxelRush.Gameplay",
         "VoxelRush.Presentation",
         "Unity.RenderPipelines.Universal.Runtime",
