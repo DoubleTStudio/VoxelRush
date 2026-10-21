@@ -1,0 +1,307 @@
+using System;
+using System.Text;
+using System.Threading.Tasks;
+using UnityEngine;
+using UnityEngine.Networking;
+
+namespace VoxelRush.Networking.Online
+{
+    /// <summary>One HTTP exchange with the API; swapped for a fake in tests.</summary>
+    public interface IApiTransport
+    {
+        Task<(long Status, string Body)> SendAsync(string method, string path, string? json, string? bearer);
+    }
+
+    /// <summary>Where the refresh token lives between app launches.</summary>
+    public interface ITokenStore
+    {
+        string? Load();
+
+        void Save(string? refreshToken);
+    }
+
+    [Serializable]
+    public sealed class WorldEntry
+    {
+        public string id = string.Empty;
+        public string name = string.Empty;
+        public string visibility = string.Empty;
+        public string role = string.Empty;
+    }
+
+    [Serializable]
+    public sealed class JoinGrant
+    {
+        public string ticket = string.Empty;
+        public string endpoint = string.Empty;
+        public string role = string.Empty;
+    }
+
+    public readonly struct ApiResult<T>
+    {
+        public ApiResult(T? value, string? error)
+        {
+            Value = value;
+            Error = error;
+        }
+
+        public T? Value { get; }
+
+        /// <summary>Short reason for the player (null on success).</summary>
+        public string? Error { get; }
+
+        public bool Ok => Error == null;
+    }
+
+    /// <summary>
+    /// Player-facing API client (MVP-004): guest sign-in kept across launches by its refresh token, world list and
+    /// create, and join tickets. Access tokens are refreshed once on 401.
+    /// </summary>
+    public sealed class PlayerApi
+    {
+        private readonly IApiTransport _http;
+        private readonly ITokenStore _tokens;
+        private string? _access;
+
+        public PlayerApi(IApiTransport http, ITokenStore tokens)
+        {
+            _http = http;
+            _tokens = tokens;
+        }
+
+        public string? PlayerId { get; private set; }
+
+        public bool SignedIn => _access != null;
+
+        /// <summary>Resumes the stored account, or creates a guest one when there is none (or it was revoked).</summary>
+        public async Task<ApiResult<string>> SignInAsync()
+        {
+            string? refresh = _tokens.Load();
+            if (!string.IsNullOrEmpty(refresh) && await RefreshAsync(refresh!))
+            {
+                return new ApiResult<string>(PlayerId, null);
+            }
+
+            (long status, string body) = await SendSafeAsync("POST", "v1/auth/guest", "{}", null);
+            if (status != 200)
+            {
+                return new ApiResult<string>(null, Describe(status, body));
+            }
+
+            Accept(body);
+            return new ApiResult<string>(PlayerId, null);
+        }
+
+        public Task<ApiResult<WorldEntry[]>> MyWorldsAsync() => ListAsync("v1/worlds/mine");
+
+        public Task<ApiResult<WorldEntry[]>> PublicWorldsAsync() => ListAsync("v1/worlds/public?limit=20");
+
+        public async Task<ApiResult<WorldEntry>> CreateWorldAsync(string name, string visibility)
+        {
+            string json = $"{{\"name\":{Quote(name)},\"visibility\":{Quote(visibility)}}}";
+            (long status, string body) = await AuthorizedAsync("POST", "v1/worlds/", json);
+            return status == 201 || status == 200
+                ? new ApiResult<WorldEntry>(JsonUtility.FromJson<WorldEntry>(body), null)
+                : new ApiResult<WorldEntry>(null, Describe(status, body));
+        }
+
+        /// <summary>A fresh single-use ticket and the server to present it to; waits while the world's server starts.</summary>
+        public async Task<ApiResult<JoinGrant>> JoinAsync(string worldId, Action<string>? progress = null, int maxWaitSeconds = 90)
+        {
+            string path = $"v1/worlds/{Uri.EscapeDataString(worldId)}/join";
+            (long status, string body) = await AuthorizedAsync("POST", path, "{}");
+            DateTime deadline = DateTime.UtcNow.AddSeconds(maxWaitSeconds);
+            // ALLOC-001: 202 = the world's server is starting; retry when told.
+            while (status == 202 && DateTime.UtcNow < deadline)
+            {
+                progress?.Invoke("Starting the world's server…");
+                Starting starting = JsonUtility.FromJson<Starting>(body);
+                await Delay(Math.Clamp(starting.retryAfterSeconds, 1, 10));
+                (status, body) = await AuthorizedAsync("POST", path, "{}");
+            }
+
+            if (status == 202)
+            {
+                return new ApiResult<JoinGrant>(null, "The world's server is taking too long to start. Try again.");
+            }
+
+            return status == 200
+                ? new ApiResult<JoinGrant>(JsonUtility.FromJson<JoinGrant>(body), null)
+                : new ApiResult<JoinGrant>(null, Describe(status, body));
+        }
+
+        private async Task<ApiResult<WorldEntry[]>> ListAsync(string path)
+        {
+            (long status, string body) = await AuthorizedAsync("GET", path, null);
+            if (status != 200)
+            {
+                return new ApiResult<WorldEntry[]>(null, Describe(status, body));
+            }
+
+            // JsonUtility can't read a top-level array.
+            WorldList list = JsonUtility.FromJson<WorldList>("{\"items\":" + body + "}");
+            return new ApiResult<WorldEntry[]>(list.items ?? Array.Empty<WorldEntry>(), null);
+        }
+
+        private async Task<(long, string)> AuthorizedAsync(string method, string path, string? json)
+        {
+            if (_access == null)
+            {
+                ApiResult<string> signIn = await SignInAsync();
+                if (!signIn.Ok)
+                {
+                    return (0, signIn.Error!);
+                }
+            }
+
+            (long status, string body) = await SendSafeAsync(method, path, json, _access);
+            string? refresh = _tokens.Load();
+            if (status == 401 && !string.IsNullOrEmpty(refresh) && await RefreshAsync(refresh!))
+            {
+                (status, body) = await SendSafeAsync(method, path, json, _access);
+            }
+
+            return (status, body);
+        }
+
+        private async Task<bool> RefreshAsync(string refresh)
+        {
+            (long status, string body) = await SendSafeAsync("POST", "v1/auth/refresh", $"{{\"refreshToken\":{Quote(refresh)}}}", null);
+            if (status != 200)
+            {
+                _access = null;
+                return false;
+            }
+
+            Accept(body);
+            return true;
+        }
+
+        private void Accept(string body)
+        {
+            var pair = JsonUtility.FromJson<TokenPair>(body);
+            _access = pair.accessToken;
+            PlayerId = pair.playerId;
+            // Refresh tokens rotate: keep only the newest.
+            _tokens.Save(pair.refreshToken);
+        }
+
+        private async Task<(long, string)> SendSafeAsync(string method, string path, string? json, string? bearer)
+        {
+            try
+            {
+                return await _http.SendAsync(method, path, json, bearer);
+            }
+            catch (Exception e)
+            {
+                return (0, e.Message);
+            }
+        }
+
+        /// <summary>Waits between retries; tests replace it to run instantly.</summary>
+        public Func<int, Task> Delay { get; set; } = seconds => Task.Delay(TimeSpan.FromSeconds(seconds));
+
+        private static string Describe(long status, string body) => status switch
+        {
+            0 => "Can't reach the server. Check the address and your connection.",
+            401 or 403 => "Not allowed.",
+            404 => "World not found.",
+            409 => "Conflict. Try again.",
+            429 => "Too many requests. Wait a moment.",
+            503 => "No game server is free right now. Try again soon.",
+            _ when body.Contains("\"title\":\"") => body.Split(new[] { "\"title\":\"" }, StringSplitOptions.None)[1].Split('"')[0].Replace('_', ' '),
+            _ => $"Server error ({status}).",
+        };
+
+        private static string Quote(string value)
+        {
+            var sb = new StringBuilder("\"");
+            foreach (char c in value)
+            {
+                sb.Append(c switch
+                {
+                    '"' => "\\\"",
+                    '\\' => "\\\\",
+                    _ when c < ' ' => $"\\u{(int)c:x4}",
+                    _ => c.ToString(),
+                });
+            }
+
+            return sb.Append('"').ToString();
+        }
+
+        [Serializable]
+        private sealed class TokenPair
+        {
+            public string playerId = string.Empty;
+            public string accessToken = string.Empty;
+            public string refreshToken = string.Empty;
+        }
+
+        [Serializable]
+        private sealed class Starting
+        {
+            public int retryAfterSeconds = 2;
+        }
+
+        [Serializable]
+        private sealed class WorldList
+        {
+            public WorldEntry[]? items;
+        }
+    }
+
+    /// <summary>UnityWebRequest transport (works on Android and iOS, unlike some HttpClient handlers).</summary>
+    public sealed class UnityApiTransport : IApiTransport
+    {
+        private readonly string _base;
+
+        public UnityApiTransport(string baseUrl) => _base = baseUrl.TrimEnd('/') + "/";
+
+        public async Task<(long Status, string Body)> SendAsync(string method, string path, string? json, string? bearer)
+        {
+            using var request = new UnityWebRequest(_base + path, method) { downloadHandler = new DownloadHandlerBuffer(), timeout = 10 };
+            if (json != null)
+            {
+                request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(json));
+                request.SetRequestHeader("Content-Type", "application/json");
+            }
+
+            if (bearer != null)
+            {
+                request.SetRequestHeader("Authorization", "Bearer " + bearer);
+            }
+
+            await request.SendWebRequest();
+            return (request.responseCode, request.downloadHandler.text ?? string.Empty);
+        }
+    }
+
+    /// <summary>Device-local refresh token (PlayerPrefs; platform secure storage is a follow-up).</summary>
+    public sealed class PrefsTokenStore : ITokenStore
+    {
+        private readonly string _key;
+
+        public PrefsTokenStore(string apiUrl) => _key = "voxelrush.refresh." + apiUrl.Trim().TrimEnd('/');
+
+        public string? Load()
+        {
+            string value = PlayerPrefs.GetString(_key, string.Empty);
+            return value.Length > 0 ? value : null;
+        }
+
+        public void Save(string? refreshToken)
+        {
+            if (refreshToken == null)
+            {
+                PlayerPrefs.DeleteKey(_key);
+            }
+            else
+            {
+                PlayerPrefs.SetString(_key, refreshToken);
+            }
+
+            PlayerPrefs.Save();
+        }
+    }
+}

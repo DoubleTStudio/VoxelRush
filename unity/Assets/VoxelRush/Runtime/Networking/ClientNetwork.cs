@@ -49,7 +49,13 @@ namespace VoxelRush.Networking
                 return null;
             }
 
-            string s = args[i + 1].Replace('-', '+').Replace('_', '/');
+            return DecodeTicket(args[i + 1]);
+        }
+
+        /// <summary>Decodes a base64url ticket as the API issues it; null if malformed.</summary>
+        public static byte[]? DecodeTicket(string encoded)
+        {
+            string s = encoded.Replace('-', '+').Replace('_', '/');
             try
             {
                 byte[] bytes = Convert.FromBase64String(s + new string('=', (4 - s.Length % 4) % 4));
@@ -76,12 +82,13 @@ namespace VoxelRush.Networking
 #endif
         }
 
-        public static ClientNetwork? Connect(ServerEndpoint endpoint)
+        /// <param name="ticket">A join ticket from the API; falls back to <c>-joinTicket</c>, then the development session.</param>
+        public static ClientNetwork? Connect(ServerEndpoint endpoint, byte[]? ticket = null)
         {
             string address = NetworkRuntime.ResolveIPv4(endpoint.Host);
             NetworkManager manager = NetworkRuntime.Create("ClientNetwork");
             NetworkRuntime.Transport(manager).SetConnectionData(address, endpoint.Port);
-            byte[]? ticket = JoinTicketArgument(Environment.GetCommandLineArgs());
+            ticket ??= JoinTicketArgument(Environment.GetCommandLineArgs());
             manager.NetworkConfig.ConnectionData = ticket != null
                 ? ConnectionPayload.EncodeTicket(SimulationConstants.ProtocolVersion, ticket)
                 : ConnectionPayload.Encode(SimulationConstants.ProtocolVersion, Session);
