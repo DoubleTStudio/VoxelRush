@@ -32,6 +32,7 @@ builder.Services.AddSingleton<InviteStore>();
 builder.Services.AddSingleton<ProgressionStore>();
 builder.Services.AddSingleton<EntitlementStore>();
 builder.Services.AddSingleton<LeaseStore>();
+builder.Services.AddSingleton<BackupStore>();
 builder.Services.AddProblemDetails();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
@@ -171,6 +172,39 @@ worlds.MapPost("/{id:guid}/members", async (Guid id, AddMemberRequest request, C
     Problem(await store.AddMemberAsync(PlayerId(user), id, request, ct)));
 worlds.MapDelete("/{id:guid}/members/{member:guid}", async (Guid id, Guid member, ClaimsPrincipal user, WorldStore store, CancellationToken ct) =>
     Problem(await store.RemoveMemberAsync(PlayerId(user), id, member, ct)));
+// SAVE-009: restore points, owner-only point-in-time restore (world must be stopped), audit trail.
+worlds.MapGet("/{id:guid}/backups", async (Guid id, ClaimsPrincipal user, WorldStore store, BackupStore backups, CancellationToken ct) =>
+    await store.GetAsync(PlayerId(user), id, ct) is { Role: "owner" } ? Results.Ok(await backups.RestorePointsAsync(id, ct)) : Results.NotFound());
+worlds.MapGet("/{id:guid}/restores", async (Guid id, ClaimsPrincipal user, WorldStore store, BackupStore backups, CancellationToken ct) =>
+    await store.GetAsync(PlayerId(user), id, ct) is { Role: "owner" } ? Results.Ok(await backups.RestoresAsync(id, ct)) : Results.NotFound());
+worlds.MapPost("/{id:guid}/restore", async (Guid id, RestoreRequest request, ClaimsPrincipal user, WorldStore store, BackupStore backups, CancellationToken ct) =>
+{
+    if (string.IsNullOrEmpty(options.Snapshots.ServiceUrl))
+    {
+        return Results.Problem(statusCode: StatusCodes.Status501NotImplemented, title: "storage_disabled");
+    }
+
+    if (request.AsOf is not DateTimeOffset asOf)
+    {
+        return Results.Problem(statusCode: StatusCodes.Status400BadRequest, title: "invalid_request");
+    }
+
+    // Members who aren't owners learn nothing beyond "not found", like other owner-only routes.
+    if (await store.GetAsync(PlayerId(user), id, ct) is not { Role: "owner" })
+    {
+        return Results.NotFound();
+    }
+
+    (RestoreError error, RestoreView? view) = await backups.RestoreAsync(PlayerId(user), id, asOf, ct);
+    return error switch
+    {
+        RestoreError.None => Results.Ok(view),
+        RestoreError.WorldRunning => Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "world_running"),
+        RestoreError.OutsideRetention => Results.Problem(statusCode: StatusCodes.Status400BadRequest, title: "outside_retention"),
+        _ => Results.NotFound(),
+    };
+});
+
 worlds.MapPost("/{id:guid}/join", async (Guid id, ClaimsPrincipal user, WorldStore store, CancellationToken ct) =>
 {
     (WorldError error, JoinResponse? join) = await store.JoinAsync(PlayerId(user), id, ct);
@@ -224,6 +258,9 @@ internalApi.MapGet("/latest", async (Guid id, int x, int y, int z, SnapshotStore
     return error == SnapshotError.None ? Results.Ok(new { url = url!.Url, revision, sha256 = sha }) : SnapshotProblem(error);
 });
 
+app.MapGet("/internal/v1/metrics/storage", async (BackupStore backups, CancellationToken ct) => Results.Ok(await backups.MetricsAsync(ct)))
+    .AddEndpointFilter(async (context, next) => ServiceAuthorized(context.HttpContext, options) ? await next(context) : Results.Unauthorized());
+
 // Game servers grant rewards after server-validated results; the grant key makes retries harmless.
 app.MapPost("/internal/v1/players/{id:guid}/grants", async (Guid id, GrantRequest request, ProgressionStore store, CancellationToken ct) =>
 {
@@ -257,6 +294,7 @@ static IResult SnapshotProblem(SnapshotError error) => error switch
     SnapshotError.NotFound => Results.NotFound(),
     SnapshotError.Missing => Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "object_missing"),
     SnapshotError.ChecksumMismatch => Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "checksum_mismatch"),
+    SnapshotError.QuotaExceeded => Results.Problem(statusCode: StatusCodes.Status403Forbidden, title: "quota_exceeded"),
     _ => Results.Problem(statusCode: StatusCodes.Status400BadRequest, title: "invalid_request"),
 };
 

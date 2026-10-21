@@ -268,7 +268,7 @@ public sealed class SecurityTests
     [Test]
     public void StorageKeys_AreBuiltFromIdsAndIntegersOnly()
     {
-        string key = SnapshotStore.KeyFor(Guid.Parse("11111111-2222-3333-4444-555555555555"), -1, 2, -3, 9);
+        string key = SnapshotStore.KeyFor(Guid.Parse("11111111-2222-3333-4444-555555555555"), 0, -1, 2, -3, 9);
 
         Assert.That(key, Is.EqualTo("worlds/11111111222233334444555555555555/chunks/-1_2_-3/9.snap"));
         Assert.That(key, Does.Not.Contain(".."));

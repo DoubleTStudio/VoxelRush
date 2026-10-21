@@ -169,6 +169,9 @@ jobs:
       # SAVE-005: one server per world (lease), idle shutdown releases it, the saved world survives the handover.
       - name: World lease test (single writer, idle shutdown, handover)
         run: tools/smoke-lease.sh docker
+      # SAVE-009: database rebuilt from a dump, point-in-time restore, stale server disk rebuilt from storage.
+      - name: Recovery drill (pg_dump restore, point-in-time world restore)
+        run: tools/recovery-drill.sh docker
       # VR-072 DoD: drive, world sync and race again with 2% packet loss inside Unity Transport; main/manual only.
       - name: Loss test (2% transport loss)
         if: env.BUILD_IOS == 'true'
@@ -218,6 +221,7 @@ jobs:
             artifacts/smoke-auth/*.log
             artifacts/smoke-progression/*.log
             artifacts/smoke-lease/*.log
+            artifacts/recovery-drill/*.log
             artifacts/rollback-drill/
             artifacts/stress-destruction/*.log
             artifacts/load/

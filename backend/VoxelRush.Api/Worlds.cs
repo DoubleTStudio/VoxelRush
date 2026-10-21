@@ -45,9 +45,12 @@ public sealed partial class WorldStore(NpgsqlDataSource db, ApiOptions options, 
 
         await using NpgsqlConnection c = await db.OpenConnectionAsync(ct);
         await using NpgsqlTransaction tx = await c.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
-        await using (var count = new NpgsqlCommand("SELECT count(*) FROM worlds WHERE owner_id = $1 AND status = 'active'", c, tx) { Parameters = { new() { Value = owner } } })
+        // SAVE-009: a world_quotas row overrides the default.
+        await using (var count = new NpgsqlCommand(
+            "SELECT count(*) FROM worlds WHERE owner_id = $1 AND status = 'active' HAVING count(*) >= coalesce((SELECT max_worlds FROM world_quotas WHERE owner_id = $1), $2)", c, tx)
+            { Parameters = { new() { Value = owner }, new() { Value = options.MaxWorldsPerOwner } } })
         {
-            if ((long)(await count.ExecuteScalarAsync(ct))! >= options.MaxWorldsPerOwner)
+            if (await count.ExecuteScalarAsync(ct) != null)
             {
                 return (WorldError.QuotaExceeded, null);
             }

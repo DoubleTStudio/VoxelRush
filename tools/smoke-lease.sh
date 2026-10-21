@@ -35,7 +35,7 @@ if [[ "$MODE" == "docker" ]]; then
 else
   S3_URL="http://127.0.0.1:18333"; S3_PORTS=(-p 18333:18333 -p 18082:8080); API_NET=(--network container:voxelrush-lease-s3); SERVER_API="$API"
 fi
-docker run -d --name voxelrush-lease-s3 --network "$NET" "${S3_PORTS[@]+"${S3_PORTS[@]}"}" -v "$LOGS/s3.json:/etc/seaweedfs/s3.json:ro" chrislusf/seaweedfs:3.97 \
+docker run -d --name voxelrush-lease-s3 --network "$NET" "${S3_PORTS[@]+"${S3_PORTS[@]}"}" --tmpfs /data:size=512m -v "$LOGS/s3.json:/etc/seaweedfs/s3.json:ro" chrislusf/seaweedfs:3.97 \
   server -s3 -s3.port=18333 -s3.config=/etc/seaweedfs/s3.json -volume.port=18080 -dir=/data -master.volumeSizeLimitMB=64 -volume.minFreeSpace=50MiB >/dev/null
 for _ in $(seq 1 60); do docker exec voxelrush-lease-db pg_isready -U postgres -q 2>/dev/null && break; sleep 1; done
 docker build -q -f "$ROOT/docker/api/Dockerfile" -t voxelrush-api:smoke "$ROOT/build/api" >/dev/null

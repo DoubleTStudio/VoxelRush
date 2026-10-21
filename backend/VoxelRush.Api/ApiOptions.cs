@@ -91,4 +91,16 @@ public sealed class SnapshotStoreOptions
     public int PresignMinutes { get; set; } = 10;
 
     public int MaxSnapshotBytes { get; set; } = 1024 * 1024;
+
+    /// <summary>SAVE-009 retention: the newest revisions per chunk always kept, plus everything inside the window.</summary>
+    public int RetainRevisions { get; set; } = 3;
+
+    /// <summary>Point-in-time restore window.</summary>
+    public int RetentionDays { get; set; } = 7;
+
+    /// <summary>Default when the owner has no world_quotas row.</summary>
+    public long MaxStoredBytesPerOwner { get; set; } = 64L * 1024 * 1024;
+
+    /// <summary>For the storage cost metric (Cloudflare R2 standard storage, USD per GB-month).</summary>
+    public decimal CostPerGbMonthUsd { get; set; } = 0.015m;
 }
