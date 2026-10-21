@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Builds a player into build/<target>/.
-# Usage: tools/build.sh <android|ios|server|server-mac|bot-linux|bot-mac> [--development]
+# Usage: tools/build.sh <android|ios|server|server-mac|bot-linux|bot-mac> [--development|--release]
+# --release: signed with the upload key from VOXELRUSH_ANDROID_* environment variables (see Editor/ReleaseSettings.cs).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -16,11 +17,12 @@ case "${1:-}" in
   server-mac)   METHOD=BuildMacServer;   TARGET=(-buildTarget OSXUniversal -standaloneBuildSubtarget Server); OUTPUT="$ROOT/build/server-mac" ;;
   bot-linux)    METHOD=BuildLinuxBot;    TARGET=(-buildTarget Linux64 -standaloneBuildSubtarget Server); OUTPUT="$ROOT/build/bot-linux/VoxelRushBot.x86_64" ;;
   bot-mac)      METHOD=BuildMacBot;      TARGET=(-buildTarget OSXUniversal -standaloneBuildSubtarget Server); OUTPUT="$ROOT/build/bot-mac" ;;
-  *)            echo "Usage: $0 <android|ios|server|server-mac|bot-linux|bot-mac> [--development]" >&2; exit 2 ;;
+  *)            echo "Usage: $0 <android|ios|server|server-mac|bot-linux|bot-mac> [--development|--release]" >&2; exit 2 ;;
 esac
 
 EXTRA=()
 [[ "${2:-}" == "--development" ]] && EXTRA+=(-developmentBuild)
+[[ "${2:-}" == "--release" ]] && EXTRA+=(-releaseBuild)
 
 "$ROOT/tools/unity.sh" "${TARGET[@]}" -quit -executeMethod "VoxelRush.Editor.BuildEntryPoints.$METHOD" \
   -buildOutput "$OUTPUT" -logFile "$LOGS/$1.log" "${EXTRA[@]+"${EXTRA[@]}"}"
