@@ -44,6 +44,7 @@ namespace VoxelRush.Networking
         private const string LastServerKey = "voxelrush.lastServer";
         private bool _joinScreen;
         private bool _returnToJoin;
+        private bool _leaving;
         private string _address = string.Empty;
         private string? _joinError;
 
@@ -137,7 +138,9 @@ namespace VoxelRush.Networking
                 _network?.Dispose();
                 _network = null;
                 _world = null;
+                RaceClient.Current = null;
                 _joinScreen = true;
+                _leaving = false;
             }
 
             _world?.Tick();
@@ -173,6 +176,23 @@ namespace VoxelRush.Networking
         {
             _network?.Dispose();
             _network = null;
+        }
+
+        /// <summary>UI-001: leaves the current server for the join screen (saves the chunk cache first).</summary>
+        public void Leave()
+        {
+            if (_network == null || !Interactive)
+            {
+                return;
+            }
+
+            Debug.Log(LogEvent.Format("client_leave"));
+            _onlineWorldId = null;
+            _world?.SaveCache();
+            _leaving = true;
+            _connectedAt = -1;
+            _joinError = null;
+            _returnToJoin = true;
         }
 
         /// <summary>
@@ -278,7 +298,7 @@ namespace VoxelRush.Networking
                 {
                     Exit(ExitCodeConnectFailed);
                 }
-                else if (Interactive && !_reconnecting)
+                else if (Interactive && !_reconnecting && !_leaving)
                 {
                     _joinError = _connectedAt < 0 ? $"Could not reach {endpoint}." : "Disconnected from the server.";
                     _connectedAt = -1;

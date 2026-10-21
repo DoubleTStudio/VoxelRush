@@ -126,6 +126,11 @@ namespace VoxelRush.Presentation.World
             }
 
             _gestures.Read(out _, out _);
+            if (UI.GameMenu.IsOpen)
+            {
+                return;
+            }
+
             if (Current != Mode.Off && _gestures.Tap is Vector2 tap && !_panel.Contains(new Vector2(tap.x, Screen.height - tap.y)))
             {
                 TapAt(tap);
