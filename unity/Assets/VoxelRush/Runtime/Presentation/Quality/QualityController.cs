@@ -55,7 +55,10 @@ namespace VoxelRush.Presentation.Quality
         {
             Instance = this;
             ClassifiedTier = new DeviceProfile(Application.isMobilePlatform, SystemInfo.systemMemorySize, SystemInfo.graphicsMemorySize, SystemInfo.processorCount).Classify();
-            QualityTier start = ParseTier(Environment.GetCommandLineArgs()) ?? ClassifiedTier;
+            // Command line (benchmarks) > the player's saved choice > device classification.
+            QualityTier? chosen = Settings.DeviceSettings.Current.QualityOverride;
+            QualityTier start = ParseTier(Environment.GetCommandLineArgs()) ?? chosen ?? ClassifiedTier;
+            _adaptive = _adaptive && chosen == null;
             _original = QualitySettings.renderPipeline ?? GraphicsSettings.defaultRenderPipeline;
             if (_original is UniversalRenderPipelineAsset urp)
             {

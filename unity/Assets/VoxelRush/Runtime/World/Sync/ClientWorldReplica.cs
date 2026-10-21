@@ -52,6 +52,9 @@ namespace VoxelRush.World.Sync
             return into.Count;
         }
 
+        /// <summary>Asks the server for a chunk's snapshot (e.g. a cache miss).</summary>
+        public void Request(ChunkCoord coord) => RequestSnapshot(coord, force: true);
+
         /// <summary>A separate copy for a race's match overlay; the sandbox replica stays untouched by match deltas.</summary>
         public ClientWorldReplica Fork()
         {

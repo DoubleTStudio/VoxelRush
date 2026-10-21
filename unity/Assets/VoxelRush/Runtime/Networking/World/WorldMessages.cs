@@ -13,6 +13,9 @@ namespace VoxelRush.Networking.World
         public const string SnapshotRequest = "vr/snapshot-request";
         public const string Edit = "vr/edit";
         public const string EditResult = "vr/edit-result";
+        // SAVE-008: client → server list of cached chunk versions; server → client "your copy is current".
+        public const string CacheManifest = "vr/chunk-cache-manifest";
+        public const string ChunkCurrent = "vr/chunk-current";
 
         // Upper bound for any world message; untrusted lengths beyond it are dropped before allocating.
         public const int MaxPayloadBytes = 64 * 1024;

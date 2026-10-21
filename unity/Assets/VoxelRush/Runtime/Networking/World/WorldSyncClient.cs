@@ -18,9 +18,16 @@ namespace VoxelRush.Networking.World
         private readonly Dictionary<Guid, Action<EditRejection, ulong>> _pendingEdits = new Dictionary<Guid, Action<EditRejection, ulong>>();
         private readonly List<ChunkMutationBatch> _scratch = new List<ChunkMutationBatch>();
 
-        public WorldSyncClient(NetworkManager manager)
+        private readonly string? _cacheRoot;
+        private ChunkCache? _cache;
+        private readonly List<ChunkCoord> _region = new List<ChunkCoord>();
+
+        /// <param name="cacheRoot">SAVE-008 device chunk cache directory, or null for none.</param>
+        public WorldSyncClient(NetworkManager manager, string? cacheRoot = null)
         {
             _manager = manager;
+            _cacheRoot = cacheRoot;
+            manager.CustomMessagingManager.RegisterNamedMessageHandler(WorldMessages.ChunkCurrent, OnChunkCurrent);
             manager.CustomMessagingManager.RegisterNamedMessageHandler(WorldMessages.Info, OnInfo);
             manager.CustomMessagingManager.RegisterNamedMessageHandler(WorldMessages.Snapshot, OnSnapshot);
             manager.CustomMessagingManager.RegisterNamedMessageHandler(WorldMessages.Delta, OnDelta);
@@ -30,6 +37,38 @@ namespace VoxelRush.Networking.World
         public ClientWorldReplica? Replica { get; private set; }
 
         public long SnapshotsReceived { get; private set; }
+
+        public long CacheHits { get; private set; }
+
+        public long CacheMisses { get; private set; }
+
+        /// <summary>Writes the replica to the device cache (leaving the world, app paused or quitting).</summary>
+        public void SaveCache()
+        {
+            if (_cache == null || Replica == null)
+            {
+                return;
+            }
+
+            var chunks = new List<ChunkData>();
+            foreach (ChunkCoord coord in _region)
+            {
+                if (Replica.Get(coord) is ChunkData chunk)
+                {
+                    chunks.Add(chunk);
+                }
+            }
+
+            try
+            {
+                Debug.Log(LogEvent.Format("world_cache_saved", ("chunks", _cache.Store(chunks))));
+            }
+            catch (System.IO.IOException e)
+            {
+                // Disposable: a full or read-only disk only costs a full download next time.
+                Debug.LogWarning(LogEvent.Format("world_cache_save_failed", ("error", e.Message)));
+            }
+        }
 
         /// <summary>True once every chunk of the synced region has arrived.</summary>
         public bool IsSynced => Replica != null && Replica.ChunkCount >= RegionSize(Replica.Info);
@@ -81,7 +120,8 @@ namespace VoxelRush.Networking.World
             }
 
             Debug.Log(LogEvent.Format("world_replica_stats", ("chunks", Replica.ChunkCount), ("snapshots", SnapshotsReceived), ("deltas", Replica.AppliedDeltas),
-                ("duplicates", Replica.DuplicateDeltas), ("gaps", Replica.Gaps), ("hashMismatches", Replica.HashMismatches)));
+                ("duplicates", Replica.DuplicateDeltas), ("gaps", Replica.Gaps), ("hashMismatches", Replica.HashMismatches),
+                ("cacheHits", CacheHits), ("cacheMisses", CacheMisses)));
         }
 
         private void OnInfo(ulong sender, FastBufferReader reader)
@@ -94,11 +134,63 @@ namespace VoxelRush.Networking.World
             try
             {
                 Replica = new ClientWorldReplica(WorldInfo.Decode(payload));
+                _region.Clear();
+                _region.AddRange(Replica.Info.RegionChunks());
+                OpenCache();
                 Debug.Log(LogEvent.Format("world_info", ("worldId", Replica.Info.WorldId), ("kind", Replica.Info.Kind), ("generatorVersion", Replica.Info.GeneratorVersion), ("chunks", RegionSize(Replica.Info))));
             }
             catch (Exception e) when (e is NotSupportedException || e is System.IO.InvalidDataException)
             {
                 Debug.LogError(LogEvent.Format("world_info_rejected", ("error", e.Message)));
+            }
+        }
+
+        // Always answer, even with an empty list: the server holds the first snapshots until it hears from us.
+        private void OpenCache()
+        {
+            var manifest = new List<CachedChunk>();
+            if (_cacheRoot != null)
+            {
+                try
+                {
+                    _cache = new ChunkCache(_cacheRoot, Replica!.Info);
+                    manifest = _cache.Manifest();
+                    Debug.Log(LogEvent.Format("world_cache_opened", ("entries", manifest.Count), ("invalidated", _cache.Invalidated)));
+                }
+                catch (Exception e) when (e is System.IO.IOException || e is UnauthorizedAccessException)
+                {
+                    _cache = null;
+                    Debug.LogWarning(LogEvent.Format("world_cache_unavailable", ("error", e.Message)));
+                }
+            }
+
+            WorldMessages.Send(_manager, WorldMessages.CacheManifest, NetworkManager.ServerClientId, CachedChunkWire.Encode(manifest), NetworkDelivery.ReliableFragmentedSequenced);
+        }
+
+        private void OnChunkCurrent(ulong sender, FastBufferReader reader)
+        {
+            if (sender != NetworkManager.ServerClientId || Replica == null || !WorldMessages.TryRead(reader, out byte[] payload)
+                || !CachedChunkWire.TryDecode(payload, out List<CachedChunk> current))
+            {
+                return;
+            }
+
+            foreach (CachedChunk c in current)
+            {
+                // ApplySnapshot re-verifies the content hash; a tampered or torn entry asks the server instead.
+                ChunkSnapshotMessage? cached = _cache?.TryLoad(c.Coord, c.Revision, c.ContentHash);
+                if (cached != null && Replica.ApplySnapshot(cached))
+                {
+                    CacheHits++;
+                    continue;
+                }
+
+                CacheMisses++;
+                _cache?.Drop(c.Coord);
+                if (cached == null)
+                {
+                    Replica.Request(c.Coord);
+                }
             }
         }
 
