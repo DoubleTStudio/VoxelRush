@@ -177,6 +177,11 @@ namespace VoxelRush.Tests.PlayMode
             Assert.That(Camera.main, Is.Not.Null);
             Assert.That(Camera.main!.GetComponent<ChaseCamera>(), Is.Not.Null);
             Assert.That(UnityEngine.Object.FindAnyObjectByType<NetworkWorldView>(), Is.Not.Null);
+            var builder = UnityEngine.Object.FindAnyObjectByType<PhoneBuilder>();
+            Assert.That(builder, Is.Not.Null);
+            builder!.SetMode(PhoneBuilder.Mode.Place);
+            Assert.That(builder.TapAt(new Vector2(Screen.width / 2f, Screen.height / 2f)), Is.Not.EqualTo(EditRejection.None), "nothing is sent while offline");
+            Assert.That(builder.Sent, Is.EqualTo(0));
             yield return TestScenes.UnloadAll();
         }
     }

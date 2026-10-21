@@ -4,6 +4,7 @@ using VoxelRush.Core;
 using VoxelRush.Core.Diagnostics;
 using VoxelRush.Core.Hosting;
 using VoxelRush.Core.Networking;
+using VoxelRush.Gameplay.World;
 using VoxelRush.Networking;
 using VoxelRush.Networking.Race;
 using VoxelRush.Networking.Vehicles;
@@ -176,6 +177,12 @@ namespace VoxelRush.Server
                 Shutdown(ExitCodeStartupFailure, "world_restore_failed");
                 return;
             }
+
+            // MVP-003: placed blocks are solid; built before any car spawns.
+            WorldSyncServer synced = _world;
+            var colliders = new GameObject(nameof(WorldColliders)).AddComponent<WorldColliders>();
+            colliders.Bind(() => synced.Info, synced.GetChunk);
+            colliders.Refresh(all: true);
 
             // SAVE-006: XP for validated results, only with API identities (tickets) and API credentials configured.
             if (tickets != null)

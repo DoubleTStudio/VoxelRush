@@ -12,17 +12,25 @@ namespace VoxelRush.Presentation.Input
     /// </summary>
     public sealed class CameraGestures
     {
-        private readonly Dictionary<int, (bool Free, Vector2 Position)> _touches = new Dictionary<int, (bool, Vector2)>();
+        // A short touch that barely moved is a tap (build), not a drag (camera).
+        private const float TapMaxSeconds = 0.35f;
+        private const float TapMaxTravelPixels = 25f;
+
+        private readonly Dictionary<int, Tracked> _touches = new Dictionary<int, Tracked>();
         private readonly List<int> _seen = new List<int>();
         private readonly List<RaycastResult> _hits = new List<RaycastResult>();
         private readonly List<(Vector2 Previous, Vector2 Current)> _free = new List<(Vector2, Vector2)>(2);
         private PointerEventData? _pointer;
+
+        /// <summary>Screen position of a tap off the HUD that ended this frame (set by <see cref="Read"/>).</summary>
+        public Vector2? Tap { get; private set; }
 
         /// <summary>This frame's drag in pixels and pinch ratio (above 1 = fingers spreading); false when idle.</summary>
         public bool Read(out Vector2 drag, out float pinch)
         {
             drag = Vector2.zero;
             pinch = 1f;
+            Tap = null;
             ReadTouches();
             if (_free.Count == 1)
             {
@@ -41,6 +49,11 @@ namespace VoxelRush.Presentation.Input
                 if (mouse.rightButton.isPressed)
                 {
                     drag += mouse.delta.ReadValue();
+                }
+
+                if (mouse.leftButton.wasPressedThisFrame && !OverHud(mouse.position.ReadValue()))
+                {
+                    Tap = mouse.position.ReadValue();
                 }
 
                 float scroll = mouse.scroll.ReadValue().y;
@@ -70,14 +83,15 @@ namespace VoxelRush.Presentation.Input
                     int id = touch.touchId.ReadValue();
                     Vector2 position = touch.position.ReadValue();
                     _seen.Add(id);
-                    if (!_touches.TryGetValue(id, out var known))
+                    if (!_touches.TryGetValue(id, out Tracked known))
                     {
                         // Decided once at touch-down: a finger that slides off a button stays a button finger.
-                        _touches[id] = (!OverHud(touch.startPosition.ReadValue()), position);
+                        Vector2 start = touch.startPosition.ReadValue();
+                        _touches[id] = new Tracked(!OverHud(start), start, position, Time.unscaledTime, 0f);
                         continue;
                     }
 
-                    _touches[id] = (known.Free, position);
+                    _touches[id] = new Tracked(known.Free, known.Start, position, known.StartedAt, Mathf.Max(known.Travel, Vector2.Distance(known.Start, position)));
                     if (known.Free && _free.Count < 2)
                     {
                         _free.Add((known.Position, position));
@@ -91,10 +105,38 @@ namespace VoxelRush.Presentation.Input
                 {
                     if (!_seen.Contains(id))
                     {
+                        Tracked ended = _touches[id];
+                        if (ended.Free && ended.Travel <= TapMaxTravelPixels && Time.unscaledTime - ended.StartedAt <= TapMaxSeconds)
+                        {
+                            Tap = ended.Position;
+                        }
+
                         _touches.Remove(id);
                     }
                 }
             }
+        }
+
+        private readonly struct Tracked
+        {
+            public Tracked(bool free, Vector2 start, Vector2 position, float startedAt, float travel)
+            {
+                Free = free;
+                Start = start;
+                Position = position;
+                StartedAt = startedAt;
+                Travel = travel;
+            }
+
+            public bool Free { get; }
+
+            public Vector2 Start { get; }
+
+            public Vector2 Position { get; }
+
+            public float StartedAt { get; }
+
+            public float Travel { get; }
         }
 
         private bool OverHud(Vector2 screenPosition)

@@ -64,6 +64,19 @@ namespace VoxelRush.Networking
 
         private void Awake() => Instance = this;
 
+        // MVP-003: the predicting car collides with the same placed blocks as the server.
+        private void EnsureWorldColliders()
+        {
+            if (GetComponentInChildren<Gameplay.World.WorldColliders>() != null)
+            {
+                return;
+            }
+
+            var colliders = new GameObject(nameof(Gameplay.World.WorldColliders)).AddComponent<Gameplay.World.WorldColliders>();
+            colliders.transform.SetParent(transform, false);
+            colliders.Bind(() => _world?.Replica?.Info, c => _world?.Replica?.Get(c));
+        }
+
         private void Start()
         {
             _startedAt = Time.realtimeSinceStartupAsDouble;
@@ -234,6 +247,7 @@ namespace VoxelRush.Networking
                 }
 
                 _world = new WorldSyncClient(Unity.Netcode.NetworkManager.Singleton, _cacheRoot);
+                EnsureWorldColliders();
                 RaceClient.Current = new RaceClient(Unity.Netcode.NetworkManager.Singleton);
                 BotBuilder.World = _world;
                 Debug.Log(LogEvent.Format("client_connected", ("endpoint", endpoint), ("seconds", _connectedAt - _startedAt)));
