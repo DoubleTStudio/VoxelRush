@@ -36,7 +36,7 @@
 | `dotnet test backend/VoxelRush.HostAgent.Tests` | Passed 23/23 |
 | `dotnet test backend/VoxelRush.Api.Tests --filter FullyQualifiedName~AllocationTests` | Passed 8/8 |
 | `dotnet test backend/VoxelRush.Api.Tests` before the change (baseline) | Passed 104/104 |
-| `dotnet test backend/VoxelRush.Api.Tests` with the change | see PR (local Docker stopped mid-run; CI runs it) |
+| `dotnet test backend/VoxelRush.Api.Tests` with the change | Passed 112/112 (CI `api-tests`; the local Docker daemon stopped mid-run) |
 | actionlint 1.7.7 | clean |
 | `docker compose -f docker/compose.backend.yaml [--profile hosting] config` | valid |
 | Host agent image + real Docker, with a stand-in server image that logs `server_listening` | 401 without token; 202 → 202 → 200 `127.0.0.1:7850`; second world on 7851; third world 503 `no_capacity`; after a server stops, the third world gets 7850; volume writable by uid 10001; server saw the right args and env; service token absent from agent log |
