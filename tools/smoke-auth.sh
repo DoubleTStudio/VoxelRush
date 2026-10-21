@@ -17,7 +17,7 @@ pids=()
 rm -rf "$LOGS" && mkdir -p "$LOGS/world" && chmod 777 "$LOGS/world"
 cleanup() {
   for pid in "${pids[@]+"${pids[@]}"}"; do kill "$pid" 2>/dev/null || true; done
-  docker rm -f voxelrush-auth-api voxelrush-auth-db voxelrush-auth-server >/dev/null 2>&1 || true
+  docker rm -f -v voxelrush-auth-api voxelrush-auth-db voxelrush-auth-server >/dev/null 2>&1 || true
   docker network rm "$NET" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
