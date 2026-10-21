@@ -75,6 +75,8 @@ public sealed class ApiOptions
         {
             throw new InvalidOperationException("VoxelRush:HostAgentTimeoutSeconds must be 1..60.");
         }
+
+        Snapshots.Validate();
     }
 
     private static byte[] Key(string value, string name)
@@ -160,4 +162,28 @@ public sealed class SnapshotStoreOptions
 
     /// <summary>For the storage cost metric (Cloudflare R2 standard storage, USD per GB-month).</summary>
     public decimal CostPerGbMonthUsd { get; set; } = 0.015m;
+
+    // DEV-002 a half-configured store fails at startup instead of on the first snapshot upload.
+    public void Validate()
+    {
+        if (ServiceUrl.Length == 0)
+        {
+            return;
+        }
+
+        if (!Uri.TryCreate(ServiceUrl, UriKind.Absolute, out Uri? url) || (url.Scheme != Uri.UriSchemeHttp && url.Scheme != Uri.UriSchemeHttps))
+        {
+            throw new InvalidOperationException("VoxelRush:Snapshots:ServiceUrl must be an absolute http(s) URL.");
+        }
+
+        if (string.IsNullOrWhiteSpace(AccessKey) || string.IsNullOrWhiteSpace(SecretKey))
+        {
+            throw new InvalidOperationException("VoxelRush:Snapshots:AccessKey and SecretKey are required with a ServiceUrl.");
+        }
+
+        if (string.IsNullOrWhiteSpace(Bucket))
+        {
+            throw new InvalidOperationException("VoxelRush:Snapshots:Bucket is required with a ServiceUrl.");
+        }
+    }
 }
