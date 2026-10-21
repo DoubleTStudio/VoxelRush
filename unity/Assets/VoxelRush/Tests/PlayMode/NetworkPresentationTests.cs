@@ -182,6 +182,10 @@ namespace VoxelRush.Tests.PlayMode
             builder!.SetMode(PhoneBuilder.Mode.Place);
             Assert.That(builder.TapAt(new Vector2(Screen.width / 2f, Screen.height / 2f)), Is.Not.EqualTo(EditRejection.None), "nothing is sent while offline");
             Assert.That(builder.Sent, Is.EqualTo(0));
+            builder.SelectBlock(BlockIds.Glass);
+            Assert.That(builder.BlockType, Is.EqualTo(BlockIds.Glass));
+            builder.SelectBlock(BlockIds.Protected);
+            Assert.That(builder.BlockType, Is.EqualTo(BlockIds.Glass), "protected blocks aren't on the palette");
             yield return TestScenes.UnloadAll();
         }
     }
