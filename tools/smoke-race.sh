@@ -12,12 +12,15 @@ WORLD="$LOGS/world"
 PORT=7777
 # 8 on main (DoD); CI PRs use 4 because 8 bots + server overload the shared runner.
 BOTS="${RACE_BOTS:-8}"
+# RACE_READY=1: no server auto-start; bots ready up in the lobby once all have joined (RACE-002).
+START=(-raceAutoStart "$BOTS")
 IMAGE="voxelrush-server:smoke"
 NETWORK="voxelrush-race"
 BOT_IMAGE="ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac"
 pids=()
 # Extra bot flags from the environment, e.g. BOT_ARGS="-simTransportLossPercent 2" (tools/smoke-loss.sh).
 read -r -a BOT_EXTRA <<<"${BOT_ARGS:-}"
+if [[ "${RACE_READY:-0}" == 1 ]]; then START=(); BOT_EXTRA+=(-botReady "$BOTS"); fi
 
 rm -rf "$LOGS" && mkdir -p "$WORLD" && chmod 777 "$WORLD"
 cleanup() {
@@ -34,10 +37,10 @@ if [[ "$MODE" == "docker" ]]; then
   docker build -q -f "$ROOT/docker/server/Dockerfile" -t "$IMAGE" "$ROOT/build/server" >/dev/null
   docker network create "$NETWORK" >/dev/null
   docker run --rm --init --name voxelrush-race-server --network "$NETWORK" -v "$WORLD:/data" "$IMAGE" \
-    -port "$PORT" -worldDir /data -raceAutoStart "$BOTS" -smokeTestTicks 1650 >"$LOGS/server.log" 2>&1 &
+    -port "$PORT" -worldDir /data "${START[@]+"${START[@]}"}" -smokeTestTicks 1650 >"$LOGS/server.log" 2>&1 &
 else
   perl -e 'alarm shift; exec @ARGV' 180 "$ROOT/build/server-mac/VoxelRush" -batchmode -nographics -logFile - \
-    -port "$PORT" -worldDir "$WORLD" -raceAutoStart "$BOTS" -smokeTestTicks 1650 >"$LOGS/server.log" 2>&1 &
+    -port "$PORT" -worldDir "$WORLD" "${START[@]+"${START[@]}"}" -smokeTestTicks 1650 >"$LOGS/server.log" 2>&1 &
 fi
 SERVER_PID=$!; pids+=("$SERVER_PID")
 for _ in $(seq 1 120); do grep -q "event=server_listening" "$LOGS/server.log" 2>/dev/null && break; sleep 0.5; done
