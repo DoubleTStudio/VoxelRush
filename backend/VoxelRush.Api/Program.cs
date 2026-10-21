@@ -320,6 +320,10 @@ app.MapPost("/internal/v1/players/{id:guid}/grants", async (Guid id, GrantReques
     return ok ? Results.Ok(result) : Results.Problem(statusCode: StatusCodes.Status400BadRequest, title: "invalid_grant");
 }).AddEndpointFilter(async (context, next) => ServiceAuthorized(context.HttpContext, options) ? await next(context) : Results.Unauthorized());
 
+// COSM-001: game servers check what a player owns before showing it to others (unknown players own nothing).
+app.MapGet("/internal/v1/players/{id:guid}/entitlements", async (Guid id, EntitlementStore store, CancellationToken ct) =>
+    Results.Ok(new OwnedSkusView((await store.ListAsync(id, ct)).Select(e => e.Sku).ToArray())))
+    .AddEndpointFilter(async (context, next) => ServiceAuthorized(context.HttpContext, options) ? await next(context) : Results.Unauthorized());
 app.MapPost("/internal/v1/players/{id:guid}/entitlements", async (Guid id, GrantEntitlementRequest request, EntitlementStore store, CancellationToken ct) =>
     EntitlementResult(await store.GrantAsync(id, request, ct)))
     .AddEndpointFilter(async (context, next) => ServiceAuthorized(context.HttpContext, options) ? await next(context) : Results.Unauthorized());

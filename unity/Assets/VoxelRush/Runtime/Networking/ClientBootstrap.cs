@@ -52,6 +52,9 @@ namespace VoxelRush.Networking
         // SAVE-008: players cache chunks under persistentDataPath; headless bots only when given a directory.
         public const string ChunkCacheArgument = "-chunkCache";
 
+        // COSM-001: headless bots have no garage; the server still checks ownership.
+        public const string PaintArgument = "-botPaint";
+
         public bool IsConnected => _network != null && _network.IsConnected;
 
         /// <summary>The synced world while connected (rendered by the client scene).</summary>
@@ -98,6 +101,12 @@ namespace VoxelRush.Networking
             _cacheRoot = cacheArg >= 0 && cacheArg + 1 < launchArgs.Length ? launchArgs[cacheArg + 1]
                 : Application.isBatchMode ? null : System.IO.Path.Combine(Application.persistentDataPath, "chunk-cache");
             string[] botArgs = Environment.GetCommandLineArgs();
+            int paintArg = Array.IndexOf(botArgs, PaintArgument);
+            if (paintArg >= 0 && paintArg + 1 < botArgs.Length)
+            {
+                Vehicles.LocalPlayer.EquippedPaint = botArgs[paintArg + 1];
+            }
+
             if (Array.IndexOf(botArgs, BotBuilder.BuildArgument) >= 0 || Array.IndexOf(botArgs, BotBuilder.TowerArgument) >= 0)
             {
                 gameObject.AddComponent<BotBuilder>();

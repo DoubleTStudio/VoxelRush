@@ -10,22 +10,12 @@ namespace VoxelRush.Presentation.Store
 {
     /// <summary>
     /// Garage on the join screen (ECON-003): level, cosmetics catalog with owned/claim/locked/buy states, and the
-    /// equipped paint, which tints the player's own car. Paint is local for now; others see the default colour.
+    /// equipped paint. The equipped paint is sent to the server, which shows it to everyone if owned (COSM-001).
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class GarageMenu : MonoBehaviour
     {
         public const string PaintKey = "voxelrush.paint";
-
-        private static readonly Dictionary<string, Color> Paints = new Dictionary<string, Color>
-        {
-            ["paint.racing-red"] = new Color(0.85f, 0.1f, 0.1f),
-            ["paint.ocean-blue"] = new Color(0.1f, 0.35f, 0.85f),
-            ["paint.sunset-stripes"] = new Color(1f, 0.5f, 0.15f),
-            ["paint.chrome"] = new Color(0.82f, 0.84f, 0.88f),
-        };
-
-        private static readonly int BaseColor = Shader.PropertyToID("_BaseColor");
 
         private CatalogEntry[] _catalog = Array.Empty<CatalogEntry>();
         private readonly HashSet<string> _owned = new HashSet<string>();
@@ -35,58 +25,14 @@ namespace VoxelRush.Presentation.Store
         private bool _busy;
         private string? _status;
         private Vector2 _scroll;
-        private MaterialPropertyBlock? _paintBlock;
-        private Transform? _paintedCar;
 
         public string? EquippedPaint => PlayerPrefs.GetString(PaintKey, string.Empty) is { Length: > 0 } sku ? sku : null;
-
-        /// <summary>Tint for a paint SKU (null = default colour).</summary>
-        public static Color? PaintColor(string? sku) => sku != null && Paints.TryGetValue(sku, out Color c) ? c : (Color?)null;
 
         /// <summary>What the garage shows for an item, from the player's level and what they own.</summary>
         public static string StateOf(CatalogEntry item, int level, bool owned) =>
             owned ? "owned" : item.unlock.store ? "buy" : level >= item.unlock.level ? "claim" : "locked";
 
-        private void Update()
-        {
-            // Repaint when the player's car (re)spawns.
-            Transform? car = LocalPlayer.Vehicle != null ? LocalPlayer.Vehicle.transform : null;
-            if (car != _paintedCar)
-            {
-                _paintedCar = car;
-                ApplyPaint();
-            }
-        }
-
-        private void ApplyPaint()
-        {
-            if (_paintedCar == null)
-            {
-                return;
-            }
-
-            _paintBlock ??= new MaterialPropertyBlock();
-            Color? color = PaintColor(EquippedPaint);
-            foreach (Renderer renderer in _paintedCar.GetComponentsInChildren<Renderer>())
-            {
-                // Only the body panels; wheels keep their colour.
-                if (!renderer.name.StartsWith("Body", StringComparison.Ordinal) && !renderer.name.StartsWith("Cabin", StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                if (color is Color c)
-                {
-                    renderer.GetPropertyBlock(_paintBlock);
-                    _paintBlock.SetColor(BaseColor, c);
-                    renderer.SetPropertyBlock(_paintBlock);
-                }
-                else
-                {
-                    renderer.SetPropertyBlock(null);
-                }
-            }
-        }
+        private void Awake() => LocalPlayer.EquippedPaint = EquippedPaint;
 
         private void OnGUI()
         {
@@ -156,13 +102,13 @@ namespace VoxelRush.Presentation.Store
             GUILayout.Label($"{item.name}  ({item.kind})", small, GUILayout.Width(400));
             switch (state)
             {
-                case "owned" when Paints.ContainsKey(item.sku):
+                case "owned" when PaintPalette.IsPaint(item.sku):
                     bool equipped = EquippedPaint == item.sku;
                     if (GUILayout.Button(equipped ? "Equipped" : "Equip", button, GUILayout.Height(52)))
                     {
                         PlayerPrefs.SetString(PaintKey, equipped ? string.Empty : item.sku);
                         PlayerPrefs.Save();
-                        ApplyPaint();
+                        LocalPlayer.EquippedPaint = EquippedPaint;
                     }
 
                     break;

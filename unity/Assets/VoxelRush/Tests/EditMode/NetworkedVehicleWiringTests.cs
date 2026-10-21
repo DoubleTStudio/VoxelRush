@@ -20,10 +20,23 @@ namespace VoxelRush.Tests.EditMode
 
             Assert.That(prefab.GetComponent<NetworkObject>(), Is.Not.Null);
             Assert.That(prefab.GetComponent<VehicleNetworkDriver>(), Is.Not.Null);
+            Assert.That(prefab.GetComponent<VehiclePaint>(), Is.Not.Null, "paint is replicated on the car (COSM-001)");
             var vehicle = prefab.GetComponent<ArcadeVehicle>();
             Assert.That(vehicle, Is.Not.Null);
             Assert.That(vehicle.AutoSimulate, Is.False, "networked cars must only be stepped by the tick loop");
             Assert.That(vehicle.Tuning.Validate(), Is.Empty);
+        }
+
+        [Test]
+        public void PaintCatalog_MatchesTheBackendCatalogPaints()
+        {
+            string path = System.IO.Path.GetFullPath(System.IO.Path.Combine(Application.dataPath, "../../backend/VoxelRush.Api/catalog.json"));
+            Assume.That(System.IO.File.Exists(path), "backend not checked out next to the Unity project");
+            string[] backend = System.Text.RegularExpressions.Regex.Matches(System.IO.File.ReadAllText(path), "\"sku\"\\s*:\\s*\"(paint\\.[^\"]+)\"")
+                .Cast<System.Text.RegularExpressions.Match>().Select(m => m.Groups[1].Value).ToArray();
+
+            Assert.That(backend, Is.Not.Empty);
+            Assert.That(VoxelRush.Core.Cosmetics.PaintCatalog.Skus, Is.EquivalentTo(backend), "a paint the API sells must be one the game can show");
         }
 
         [TestCase(BuildEntryPoints.ServerScene)]

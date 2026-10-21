@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SAVE-006 end to end: two API players race on a ticket-only server; the server grants XP for the validated results
 # through the API (idempotent keys); a second device linked to the winner sees the same progression; re-sending a
-# grant changes nothing.
+# grant changes nothing. COSM-001: A shows an owned paint to B; B's unowned paint is refused by the server.
 # Usage: tools/smoke-progression.sh native|docker   (API and PostgreSQL always run in Docker)
 set -euo pipefail
 
@@ -10,7 +10,8 @@ MODE="${1:-native}"
 LOGS="$ROOT/artifacts/smoke-progression"
 NET="voxelrush-prog"
 API="http://127.0.0.1:18081"
-PORT=7777
+# SMOKE_PORT: another local server may already hold 7777.
+PORT="${SMOKE_PORT:-7777}"
 BOT_IMAGE="ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac"
 pids=()
 rm -rf "$LOGS" && mkdir -p "$LOGS/world" && chmod 777 "$LOGS/world"
@@ -38,6 +39,8 @@ a=$(curl -fsS -X POST "$API/v1/auth/guest"); a_token=$(json "['accessToken']" <<
 b=$(curl -fsS -X POST "$API/v1/auth/guest"); b_token=$(json "['accessToken']" <<<"$b")
 WORLD_ID=$(curl -fsS -X POST "$API/v1/worlds" -H "Authorization: Bearer $a_token" -H "Content-Type: application/json" -d '{"name":"Race Day","visibility":"public"}' | json "['id']")
 ticket() { curl -fsS -X POST "$API/v1/worlds/$WORLD_ID/join" -H "Authorization: Bearer $1" | json "['ticket']"; }
+# A owns the free level-1 paint; B owns nothing.
+curl -fsS -X POST "$API/v1/players/me/entitlements/claim" -H "Authorization: Bearer $a_token" -H "Content-Type: application/json" -d '{"sku":"paint.racing-red"}' >/dev/null
 
 if [[ "$MODE" == "docker" ]]; then
   docker build -q -f "$ROOT/docker/server/Dockerfile" -t voxelrush-server:smoke "$ROOT/build/server" >/dev/null
@@ -63,13 +66,21 @@ bot() { local log="$1"; shift
   fi
   pids+=($!)
 }
-bot "$LOGS/a.log" -joinTicket "$(ticket "$a_token")" -botRace -smokeTestSeconds 40; A=$!
+bot "$LOGS/a.log" -joinTicket "$(ticket "$a_token")" -botRace -botPaint paint.racing-red -smokeTestSeconds 40; A=$!
 sleep 0.5
-bot "$LOGS/b.log" -joinTicket "$(ticket "$b_token")" -botRace -smokeTestSeconds 40; B=$!
+bot "$LOGS/b.log" -joinTicket "$(ticket "$b_token")" -botRace -botPaint paint.chrome -smokeTestSeconds 40; B=$!
 wait "$A" || fail "racer A failed"; wait "$B" || fail "racer B failed"
 wait "$SERVER_PID" || fail "server exited non-zero"
 grep -q "event=race_rewards_queued .*grants=2" "$LOGS/server.log" || fail "server did not queue 2 rewards"
 [[ $(grep -c "event=reward_grant_sent .*status=200" "$LOGS/server.log") -eq 2 ]] || fail "rewards not confirmed by the API"
+
+grep -q "event=server_paint mode=Verified" "$LOGS/server.log" || fail "server not verifying paint ownership"
+grep -q "event=vehicle_paint_applied .*sku=paint.racing-red" "$LOGS/server.log" || fail "owned paint not applied"
+grep -q "event=vehicle_paint_rejected .*sku=paint.chrome reason=not_owned" "$LOGS/server.log" || fail "unowned paint not refused"
+grep -q "event=vehicle_paint_seen .*own=false sku=paint.racing-red" "$LOGS/b.log" || fail "B did not see A's paint"
+grep -q "event=vehicle_paint_seen .*own=true sku=paint.racing-red" "$LOGS/a.log" || fail "A did not see its own paint"
+if grep -q "event=vehicle_paint_seen .*sku=paint.chrome" "$LOGS/a.log" "$LOGS/b.log"; then fail "an unowned paint was shown"; fi
+echo "paint: A's owned paint shown to both; B's unowned paint refused"
 
 xp() { curl -fsS "$API/v1/players/me/progress" -H "Authorization: Bearer $1" | json "['xp']"; }
 xa=$(xp "$a_token"); xb=$(xp "$b_token")
@@ -90,4 +101,4 @@ dup=$(curl -fsS -X POST "$API/internal/v1/players/$a_id/grants" -H "X-Service-To
   -d "{\"grantKey\":\"$key\",\"kind\":\"xp\",\"amount\":999,\"source\":\"race\"}" | json "['duplicate']")
 [[ "$dup" == "True" && "$(xp "$a_token")" == "$xa" ]] || fail "re-sent grant was applied again"
 echo "A=$xa XP, B=$xb XP; second device matches; replay ignored"
-echo "PROGRESSION SMOKE PASS ($MODE): validated race rewards, cross-device continuity, no double grant"
+echo "PROGRESSION SMOKE PASS ($MODE): validated race rewards, cross-device continuity, no double grant, owned paints only"

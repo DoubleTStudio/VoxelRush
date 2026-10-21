@@ -77,4 +77,44 @@ namespace VoxelRush.Networking.Vehicles
             serializer.SerializeValue(ref Boosting);
         }
     }
+
+    /// <summary>
+    /// Owner → server paint request (COSM-001). Hand-written rather than a FixedString: NGO reads a FixedString's
+    /// length unchecked in release players, so untrusted lengths are bounded here before anything is copied.
+    /// </summary>
+    public struct PaintRequest : INetworkSerializable
+    {
+        /// <summary>Stands in for an over-long request: not a well-formed SKU, so the server refuses it as malformed.</summary>
+        public const string TooLong = "?";
+
+        public string Sku;
+
+        public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
+        {
+            byte length = (byte)(serializer.IsWriter ? Mathf.Min(Sku?.Length ?? 0, byte.MaxValue) : 0);
+            serializer.SerializeValue(ref length);
+            if (serializer.IsReader && length > Core.Cosmetics.PaintCatalog.MaxSkuLength)
+            {
+                // Over the contract: never read.
+                Sku = TooLong;
+                return;
+            }
+
+            var chars = serializer.IsReader ? new char[length] : null;
+            for (int i = 0; i < length; i++)
+            {
+                byte b = serializer.IsWriter ? (byte)Sku![i] : (byte)0;
+                serializer.SerializeValue(ref b);
+                if (chars != null)
+                {
+                    chars[i] = (char)b;
+                }
+            }
+
+            if (chars != null)
+            {
+                Sku = new string(chars);
+            }
+        }
+    }
 }
