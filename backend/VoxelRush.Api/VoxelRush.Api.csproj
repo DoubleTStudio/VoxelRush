@@ -17,5 +17,6 @@
     <!-- The same ticket codec the Unity dedicated server verifies with. -->
     <Compile Include="../../unity/Assets/VoxelRush/Runtime/Core/Networking/JoinTicket.cs" Link="Shared/JoinTicket.cs" />
     <EmbeddedResource Include="Migrations/*.sql" />
+    <EmbeddedResource Include="catalog.json" LogicalName="VoxelRush.Api.catalog.json" />
   </ItemGroup>
 </Project>
