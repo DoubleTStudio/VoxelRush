@@ -1,10 +1,33 @@
-# DEV-001 override for tools/dev-online.sh (compose project voxelrush-dev): only the db service is started, and the
-# native API reaches it on loopback. Own network name, so it never joins a real stack's voxelrush-backend.
+# DEV-001 override for tools/dev-online.sh (compose project voxelrush-dev): only the db and s3 services are started,
+# and the native API reaches them on loopback. Own network name, so it never joins a real stack's voxelrush-backend.
 services:
   db:
     ports:
       - "127.0.0.1:${VOXELRUSH_DEV_DB_PORT:-15434}:5432"
+  # DEV-002 S3-compatible snapshot store; SeaweedFS like the API tests and smokes (MinIO images left Docker Hub).
+  s3:
+    image: chrislusf/seaweedfs:3.97
+    # Small volumes and a low free-space floor: the default 1% floor makes it read-only on a nearly full disk.
+    command: [server, -s3, -s3.config=/etc/seaweedfs/s3.json, -dir=/data, -master.volumeSizeLimitMB=64, -volume.minFreeSpace=50MiB]
+    configs:
+      - source: s3-identities
+        target: /etc/seaweedfs/s3.json
+    # Loopback only: the API and the native world servers use the same address, which presigned URLs carry.
+    ports:
+      - "127.0.0.1:${VOXELRUSH_DEV_S3_PORT:-18092}:8333"
+    volumes: [voxelrush-s3:/data]
+    restart: unless-stopped
+
+# Inline so the generated credentials live only in artifacts/dev-online/secrets.env.
+configs:
+  s3-identities:
+    content: >-
+      {"identities":[{"name":"api","credentials":[{"accessKey":"${VOXELRUSH_DEV_S3_ACCESS_KEY:?set VOXELRUSH_DEV_S3_ACCESS_KEY}",
+      "secretKey":"${VOXELRUSH_DEV_S3_SECRET_KEY:?set VOXELRUSH_DEV_S3_SECRET_KEY}"}],"actions":["Admin","Read","Write","List","Tagging"]}]}
 
 networks:
   default:
-    name: voxelrush-dev
+    name: ${VOXELRUSH_DEV_NETWORK:-voxelrush-dev}
+
+volumes:
+  voxelrush-s3:

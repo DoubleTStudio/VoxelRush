@@ -58,6 +58,8 @@ Secrets reach game servers as environment variables (`VOXELRUSH_TICKET_KEY`, `VO
 
 API side: `VoxelRush__HostAgentUrl` (e.g. `http://host-agent:8080/`) and optionally `VoxelRush__HostAgentTimeoutSeconds` (10).
 
+Snapshot storage (API only; game servers get presigned URLs): `VoxelRush__Snapshots__ServiceUrl` (R2/S3 endpoint; empty disables storage and snapshot routes answer `501 storage_disabled`), `__AccessKey`, `__SecretKey`, `__Bucket` (`voxelrush-snapshots`, created at startup if missing), `__Region` (`auto`). When `ServiceUrl` is set, the API refuses to start if it isn't an absolute http(s) URL or if the keys or the bucket name are empty (DEV-002). Game servers must reach `ServiceUrl` at the same address the API uses, because presigned URLs carry that host.
+
 ### Running it (single VM, compose)
 ```bash
 tools/build-api.sh && tools/build-host-agent.sh
@@ -85,25 +87,29 @@ Without `--profile hosting` and `VOXELRUSH_HOST_AGENT_URL`, the stack behaves as
 - Upgrading the server image: change `ServerImage` and restart the agent. Running worlds keep the old image until they idle out; stop them to switch immediately.
 
 ## Local online stack (macOS) (DEV-001)
-On an Apple Silicon Mac the Linux amd64 server crashes under emulation, so world containers can't run. `tools/dev-online.sh` runs the same join flow with native servers, so a phone on the LAN or Tailscale can sign in, create and list worlds, and join them.
+On an Apple Silicon Mac the Linux amd64 server crashes under emulation, so world containers can't run. `tools/dev-online.sh` runs the same join flow with native servers, so a phone on the LAN or Tailscale can sign in, create and list worlds, and join them. World snapshots go to a local S3-compatible store (DEV-002), as they would to R2 in production.
 
 | Piece | How it runs | Address |
 |---|---|---|
 | PostgreSQL | `db` service of `compose.backend.yaml` + `compose.dev.yaml`, compose project `voxelrush-dev` (volume `voxelrush-dev_voxelrush-db`) | `127.0.0.1:15434` |
+| Snapshot storage | `s3` service of `compose.dev.yaml` (SeaweedFS 3.97, the same S3 gateway as the API tests and smokes), same project (volume `voxelrush-dev_voxelrush-s3`), bucket `voxelrush-snapshots` | `127.0.0.1:18092` (loopback only) |
 | API | native `dotnet` (published to `artifacts/dev-online/bin/api`) | `0.0.0.0:18090` (the phone's API URL) |
 | Host agent | native `dotnet`, `HostAgent__Runtime=process` | `127.0.0.1:18091` (internal) |
 | World servers | `build/server-mac/VoxelRush`, one process per world | UDP `7800-7899` on `PUBLIC_HOST` |
 
 ```bash
 tools/dev-online.sh up        # prints "API URL for the phone's join screen: http://<PUBLIC_HOST>:18090"
-tools/dev-online.sh status    # pids, health, running worlds (port, world id)
-tools/dev-online.sh down      # stops only what up started; the database volume and secrets are kept
+tools/dev-online.sh status    # pids, health, storage, running worlds (port, world id)
+tools/dev-online.sh check     # a snapshot round-trips: lease, presigned upload, commit, latest, presigned download, SHA-256
+tools/dev-online.sh down      # stops only what up started; the database and storage volumes and secrets are kept
 ```
-- `PUBLIC_HOST` (advertised in join endpoints) defaults to `tailscale ip -4`, else the LAN IP of `en0`/`en1`. Override ports with `API_PORT`, `AGENT_PORT`, `DB_PORT`; also `MAX_WORLDS` (4) and `IDLE_SHUTDOWN_SECONDS` (300).
+- `PUBLIC_HOST` (advertised in join endpoints) defaults to `tailscale ip -4`, else the LAN IP of `en0`/`en1`. Override ports with `API_PORT`, `AGENT_PORT`, `DB_PORT`, `S3_PORT` (TCP) and `PORT_RANGE_START`/`PORT_RANGE_END` (world servers' UDP, 7800/7899); also `MAX_WORLDS` (4) and `IDLE_SHUTDOWN_SECONDS` (300).
+- `DEV_PROJECT=<name>` runs a second stack next to the default one: compose project and network `<name>`, its own volumes, and its own secrets, pids and worlds under `artifacts/dev-online-<name>/`. Give it other ports too. Pass the same `DEV_PROJECT` to `status`, `check` and `down`.
 - `SERVER_EXE` points at another native server build (e.g. one in a different checkout). Without it, `up` builds `build/server-mac` with Unity when missing, which needs the project closed in the editor.
-- Secrets are generated once into `artifacts/dev-online/secrets.env` (mode 600, gitignored) and passed to the API, agent and servers as environment variables only. Delete the file and `docker volume rm voxelrush-dev_voxelrush-db` together to start fresh.
-- Object storage is not started: snapshot endpoints answer `501 storage_disabled`, so worlds live on local disk under `artifacts/dev-online/worlds/` (one directory per world, passed as `-worldDir`).
-- Logs: `artifacts/dev-online/api.log`, `host-agent.log`, `worlds/voxelrush-world-<id>.log` (each server's stdout, appended across restarts).
+- Secrets are generated once into `artifacts/dev-online/secrets.env` (mode 600, gitignored) and passed to the API, agent and servers as environment variables only. That includes the storage access and secret keys, which reach SeaweedFS as an inline compose config, so they are on no command line and in no other file. A secrets file from before DEV-002 gains the two storage keys on the next `up` and keeps its other values. To start fresh, delete the file and `docker volume rm voxelrush-dev_voxelrush-db voxelrush-dev_voxelrush-s3` together.
+- Snapshots: the API gets `VoxelRush__Snapshots__ServiceUrl=http://127.0.0.1:18092` and the generated keys, and creates the bucket at startup. World servers restore newer snapshots when they start and upload changed chunks at a clean shutdown (idle, `down`), through presigned URLs for that same loopback address. Servers run on this Mac, so they can reach it; phones never talk to storage. Each world's local copy stays under `artifacts/dev-online/worlds/` (one directory per world, passed as `-worldDir`). It is now a cache: delete a stopped world's directory and its next start rebuilds it from storage.
+- With storage configured, a server that can't reach it at start fails closed (SAVE-003). If the `s3` container is down, worlds don't start until `down` and `up` bring it back.
+- Logs: `artifacts/dev-online/api.log`, `host-agent.log`, `worlds/voxelrush-world-<id>.log` (each server's stdout, appended across restarts; look for `world_snapshots_restored` and `world_snapshots_published`). Storage: `docker logs voxelrush-dev-s3-1`.
 - Port 7777 is never used, so a manually started playtest server can run alongside.
 - macOS may ask to allow incoming connections for `dotnet` and `VoxelRush` the first time; allow both, or the phone can't reach the API or the servers.
 
