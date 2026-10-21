@@ -78,7 +78,7 @@ jobs:
           EVENT: ${{ github.event_name }}
           BASE: ${{ github.event.pull_request.base.sha }}
         run: |
-          if [[ "$EVENT" != pull_request ]] || git diff --name-only "$BASE"...HEAD | grep -qvE '^(backend/|docs/|tasks/|docker/api/|docker/host-agent/)|\.md$'; then
+          if [[ "$EVENT" != pull_request ]] || git diff --name-only "$BASE"...HEAD | grep -qvE '^(backend/|docs/|tasks/|docker/api/|docker/host-agent/|docker/compose\.dev\.yaml$|tools/dev-online\.sh$)|\.md$'; then
             echo "unity=true" >> "$GITHUB_OUTPUT"
           else
             echo "unity=false" >> "$GITHUB_OUTPUT"

@@ -5,6 +5,19 @@ public sealed class HostAgentOptions
 {
     public const string Section = "HostAgent";
 
+    public const string DockerRuntime = "docker";
+
+    public const string ProcessRuntime = "process";
+
+    /// <summary>"docker" (default): one container per world. "process": native server processes, for development hosts that can't run the Linux image.</summary>
+    public string Runtime { get; set; } = DockerRuntime;
+
+    /// <summary>Process runtime only: absolute path of the native server executable (e.g. build/server-mac/VoxelRush).</summary>
+    public string ServerExecutable { get; set; } = string.Empty;
+
+    /// <summary>Process runtime only: absolute directory holding a world directory and a log file per world.</summary>
+    public string WorldDataRoot { get; set; } = string.Empty;
+
     /// <summary>Token the API presents (X-Service-Token); game servers get the same one for their lease/snapshot calls.</summary>
     public string ServiceToken { get; set; } = string.Empty;
 
@@ -72,9 +85,25 @@ public sealed class HostAgentOptions
             throw new InvalidOperationException("HostAgent:ApiUrl must be an absolute http(s) URL.");
         }
 
-        if (string.IsNullOrWhiteSpace(ServerImage) || string.IsNullOrWhiteSpace(PublicHost))
+        if (string.IsNullOrWhiteSpace(PublicHost))
         {
-            throw new InvalidOperationException("HostAgent:ServerImage and HostAgent:PublicHost are required.");
+            throw new InvalidOperationException("HostAgent:PublicHost is required.");
+        }
+
+        if (Runtime == ProcessRuntime)
+        {
+            if (!Path.IsPathFullyQualified(ServerExecutable) || !Path.IsPathFullyQualified(WorldDataRoot))
+            {
+                throw new InvalidOperationException("HostAgent:ServerExecutable and HostAgent:WorldDataRoot must be absolute paths.");
+            }
+        }
+        else if (Runtime != DockerRuntime)
+        {
+            throw new InvalidOperationException("HostAgent:Runtime must be docker or process.");
+        }
+        else if (string.IsNullOrWhiteSpace(ServerImage))
+        {
+            throw new InvalidOperationException("HostAgent:ServerImage is required.");
         }
 
         if (PortRangeStart < 1 || PortRangeEnd > 65535 || PortRangeStart > PortRangeEnd)

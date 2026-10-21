@@ -43,7 +43,9 @@ Secrets reach game servers as environment variables (`VOXELRUSH_TICKET_KEY`, `VO
 | `ServiceToken` | required | Same value as the API's `VoxelRush__ServiceToken` (≥ 32 chars) |
 | `TicketKey` | required | Same value as the API's `VoxelRush__TicketKey` (base64, ≥ 32 bytes) |
 | `ApiUrl` | required | API URL as game servers reach it, e.g. `http://api:8080` |
-| `ServerImage` | required | e.g. `ghcr.io/doubletstudio/voxelrush-server:staging` (must contain ALLOC-001's `/data` mount point) |
+| `Runtime` | `docker` | `process` starts native server processes instead (development only, see "Local online stack (macOS)") |
+| `ServerImage` | required (docker) | e.g. `ghcr.io/doubletstudio/voxelrush-server:staging` (must contain ALLOC-001's `/data` mount point) |
+| `ServerExecutable` / `WorldDataRoot` | required (process) | Absolute paths: native server binary; directory for per-world data dirs and logs |
 | `PublicHost` | required | Address clients connect to (VM public IP or DNS name) |
 | `Network` | empty | Docker network for game servers (compose: `voxelrush-backend`) |
 | `PortRangeStart` / `PortRangeEnd` | 7800 / 7899 | Open these UDP ports in the firewall; nothing else |
@@ -81,3 +83,28 @@ Without `--profile hosting` and `VOXELRUSH_HOST_AGENT_URL`, the stack behaves as
 - Stop a world: `docker stop voxelrush-world-<id>` (SIGTERM flushes the journal and releases the lease).
 - World volumes outlive their servers. They are disposable caches (BACKUP_RESTORE: rebuilt from object storage), so remove volumes of worlds idle for a long time when disk runs low: `docker volume rm voxelrush-world-<id>` while the world is stopped.
 - Upgrading the server image: change `ServerImage` and restart the agent. Running worlds keep the old image until they idle out; stop them to switch immediately.
+
+## Local online stack (macOS) (DEV-001)
+On an Apple Silicon Mac the Linux amd64 server crashes under emulation, so world containers can't run. `tools/dev-online.sh` runs the same join flow with native servers, so a phone on the LAN or Tailscale can sign in, create and list worlds, and join them.
+
+| Piece | How it runs | Address |
+|---|---|---|
+| PostgreSQL | `db` service of `compose.backend.yaml` + `compose.dev.yaml`, compose project `voxelrush-dev` (volume `voxelrush-dev_voxelrush-db`) | `127.0.0.1:15434` |
+| API | native `dotnet` (published to `artifacts/dev-online/bin/api`) | `0.0.0.0:18090` (the phone's API URL) |
+| Host agent | native `dotnet`, `HostAgent__Runtime=process` | `127.0.0.1:18091` (internal) |
+| World servers | `build/server-mac/VoxelRush`, one process per world | UDP `7800-7899` on `PUBLIC_HOST` |
+
+```bash
+tools/dev-online.sh up        # prints "API URL for the phone's join screen: http://<PUBLIC_HOST>:18090"
+tools/dev-online.sh status    # pids, health, running worlds (port, world id)
+tools/dev-online.sh down      # stops only what up started; the database volume and secrets are kept
+```
+- `PUBLIC_HOST` (advertised in join endpoints) defaults to `tailscale ip -4`, else the LAN IP of `en0`/`en1`. Override ports with `API_PORT`, `AGENT_PORT`, `DB_PORT`; also `MAX_WORLDS` (4) and `IDLE_SHUTDOWN_SECONDS` (300).
+- `SERVER_EXE` points at another native server build (e.g. one in a different checkout). Without it, `up` builds `build/server-mac` with Unity when missing, which needs the project closed in the editor.
+- Secrets are generated once into `artifacts/dev-online/secrets.env` (mode 600, gitignored) and passed to the API, agent and servers as environment variables only. Delete the file and `docker volume rm voxelrush-dev_voxelrush-db` together to start fresh.
+- Object storage is not started: snapshot endpoints answer `501 storage_disabled`, so worlds live on local disk under `artifacts/dev-online/worlds/` (one directory per world, passed as `-worldDir`).
+- Logs: `artifacts/dev-online/api.log`, `host-agent.log`, `worlds/voxelrush-world-<id>.log` (each server's stdout, appended across restarts).
+- Port 7777 is never used, so a manually started playtest server can run alongside.
+- macOS may ask to allow incoming connections for `dotnet` and `VoxelRush` the first time; allow both, or the phone can't reach the API or the servers.
+
+Process runtime behaviour matches the container runtime: same names, port range, world cap, `server_listening` readiness and start timeout. A server's exit (idle shutdown, crash) frees its slot and port. Differences: state is in memory, so the agent doesn't adopt servers after a restart. On shutdown it sends SIGTERM to its servers (journal flushed, lease released) and kills any still running after 15 s. `down` also stops any leftover server whose `-worldDir` is under `artifacts/dev-online/worlds/`. The process runtime has no container isolation; use it only on development machines.

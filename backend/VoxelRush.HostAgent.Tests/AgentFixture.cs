@@ -153,8 +153,11 @@ public sealed class AgentHost : IAsyncDisposable
         ["RetryAfterSeconds"] = "2",
     };
 
+    public IServiceProvider Services => _factory.Services;
+
     /// <param name="extra">HostAgent__* overrides.</param>
-    public static AgentHost Start(IDictionary<string, string?>? extra = null)
+    /// <param name="fakeRuntime">False keeps the runtime Program.cs picks from configuration.</param>
+    public static AgentHost Start(IDictionary<string, string?>? extra = null, bool fakeRuntime = true)
     {
         Dictionary<string, string?> settings = DefaultSettings();
         foreach ((string key, string? value) in extra ?? new Dictionary<string, string?>())
@@ -174,7 +177,11 @@ public sealed class AgentHost : IAsyncDisposable
         var clock = new ManualClock();
         var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b => b.ConfigureTestServices(s =>
         {
-            s.AddSingleton<IContainerRuntime>(docker);
+            if (fakeRuntime)
+            {
+                s.AddSingleton<IContainerRuntime>(docker);
+            }
+
             s.AddSingleton<TimeProvider>(clock);
         }));
         try
