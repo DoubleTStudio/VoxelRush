@@ -6,7 +6,9 @@
 FROM --platform=linux/amd64 ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
 
 # No extra packages yet; add pinned ca-certificates when the server makes HTTPS calls (VR-080).
-RUN useradd --system --uid 10001 --home-dir /srv/voxelrush --shell /usr/sbin/nologin voxelrush
+# /data: a fresh named volume mounted there copies this ownership, so the server can write its journal (ALLOC-001).
+RUN useradd --system --uid 10001 --home-dir /srv/voxelrush --shell /usr/sbin/nologin voxelrush \
+    && install -d -o voxelrush -g voxelrush -m 0700 /data
 
 WORKDIR /srv/voxelrush
 # Root-owned and read-only for the runtime user: the server writes nothing into its install dir.

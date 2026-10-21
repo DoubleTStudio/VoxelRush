@@ -16,6 +16,8 @@
   <ItemGroup>
     <!-- The same ticket codec the Unity dedicated server verifies with. -->
     <Compile Include="../../unity/Assets/VoxelRush/Runtime/Core/Networking/JoinTicket.cs" Link="Shared/JoinTicket.cs" />
+    <!-- ALLOC-001: the host agent's ensure response, one definition for both sides. -->
+    <Compile Include="../VoxelRush.HostAgent/HostContract.cs" Link="Shared/HostContract.cs" />
     <EmbeddedResource Include="Migrations/*.sql" />
     <EmbeddedResource Include="catalog.json" LogicalName="VoxelRush.Api.catalog.json" />
     <!-- Public Apple Root CA - G3 from apple.com/certificateauthority, pinned by SHA-256 in AppleVerifier. -->

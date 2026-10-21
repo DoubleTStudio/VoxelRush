@@ -22,6 +22,8 @@ namespace VoxelRush.Networking
         private string? _onlineWorldId;
         private bool _onlineBusy;
         private Vector2 _worldScroll;
+        private string _linkCodeInput = string.Empty;
+        private string? _linkCodeShown;
 
         public bool OnJoinScreen => _joinScreen;
 
@@ -72,7 +74,21 @@ namespace VoxelRush.Networking
                 }
 
                 GUILayout.EndHorizontal();
-                _worldScroll = GUILayout.BeginScrollView(_worldScroll, GUILayout.Height(260));
+                // ACCT-001: move this account to another phone, or bring one here.
+                GUILayout.BeginHorizontal();
+                if (GUILayout.Button(_linkCodeShown != null ? $"Code: {_linkCodeShown}" : "Link a device", button, GUILayout.Height(52), GUILayout.Width(330)))
+                {
+                    _ = Run(ShowLinkCodeAsync());
+                }
+
+                _linkCodeInput = GUILayout.TextField(_linkCodeInput, 16, text, GUILayout.Height(52), GUILayout.Width(120));
+                if (GUILayout.Button("Use", button, GUILayout.Height(52)))
+                {
+                    _ = Run(RedeemLinkCodeAsync());
+                }
+
+                GUILayout.EndHorizontal();
+                _worldScroll = GUILayout.BeginScrollView(_worldScroll, GUILayout.Height(200));
                 DrawWorlds("Your worlds", _myWorlds, button, small);
                 DrawWorlds("Public worlds", _publicWorlds, button, small);
                 GUILayout.EndScrollView();
@@ -134,6 +150,31 @@ namespace VoxelRush.Networking
             _myWorlds = mine.Value ?? System.Array.Empty<WorldEntry>();
             _publicWorlds = open.Value ?? System.Array.Empty<WorldEntry>();
             _onlineStatus = mine.Error ?? open.Error;
+        }
+
+        private async Task ShowLinkCodeAsync()
+        {
+            ApiResult<string> code = await Api(_apiUrl).CreateLinkCodeAsync();
+            _linkCodeShown = code.Value;
+            _onlineStatus = code.Ok ? "Enter this code on your other device within a few minutes." : code.Error;
+        }
+
+        private async Task RedeemLinkCodeAsync()
+        {
+            if (_linkCodeInput.Trim().Length == 0)
+            {
+                _onlineStatus = "Enter the code shown on your other device.";
+                return;
+            }
+
+            ApiResult<string> linked = await Api(_apiUrl).RedeemLinkCodeAsync(_linkCodeInput);
+            _onlineStatus = linked.Ok ? "Linked: this device now uses your account." : linked.Error;
+            if (linked.Ok)
+            {
+                _linkCodeInput = string.Empty;
+                _linkCodeShown = null;
+                await LoadWorldsAsync();
+            }
         }
 
         private async Task CreateWorldAsync()
