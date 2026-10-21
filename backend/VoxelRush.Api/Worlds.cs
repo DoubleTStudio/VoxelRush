@@ -159,6 +159,44 @@ public sealed partial class WorldStore(NpgsqlDataSource db, ApiOptions options, 
         return await cmd.ExecuteNonQueryAsync(ct) == 1 ? WorldError.None : WorldError.Invalid;
     }
 
+    /// <summary>Soft delete (owner only): the world disappears from lists and joins; data stays for the retention period.</summary>
+    public async Task<WorldError> DeleteAsync(Guid owner, Guid world, CancellationToken ct)
+    {
+        WorldView? view = await GetAsync(owner, world, ct);
+        if (view == null)
+        {
+            return WorldError.NotFound;
+        }
+
+        if (view.Role != "owner")
+        {
+            return WorldError.Forbidden;
+        }
+
+        await using NpgsqlCommand cmd = db.CreateCommand("UPDATE worlds SET status = 'deleted' WHERE id = $1 AND owner_id = $2");
+        cmd.Parameters.Add(new() { Value = world });
+        cmd.Parameters.Add(new() { Value = owner });
+        await cmd.ExecuteNonQueryAsync(ct);
+        return WorldError.None;
+    }
+
+    /// <summary>Public worlds for discovery, newest first (paged by creation time).</summary>
+    public async Task<IReadOnlyList<WorldView>> PublicAsync(Guid player, int limit, DateTimeOffset? before, CancellationToken ct)
+    {
+        var list = new List<WorldView>();
+        await using NpgsqlCommand cmd = db.CreateCommand(Select + " WHERE w.status = 'active' AND w.visibility = 'public' AND ($2::timestamptz IS NULL OR w.created_at < $2) ORDER BY w.created_at DESC LIMIT $3");
+        cmd.Parameters.Add(new() { Value = player });
+        cmd.Parameters.Add(new() { Value = (object?)before ?? DBNull.Value, NpgsqlDbType = NpgsqlTypes.NpgsqlDbType.TimestampTz });
+        cmd.Parameters.Add(new() { Value = Math.Clamp(limit, 1, 50) });
+        await using NpgsqlDataReader r = await cmd.ExecuteReaderAsync(ct);
+        while (await r.ReadAsync(ct))
+        {
+            list.Add(Read(r));
+        }
+
+        return list;
+    }
+
     public async Task<WorldError> RemoveMemberAsync(Guid owner, Guid world, Guid member, CancellationToken ct)
     {
         WorldView? view = await GetAsync(owner, world, ct);

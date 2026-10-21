@@ -68,13 +68,17 @@ public sealed class ApiHost : IAsyncDisposable
 
     private readonly WebApplicationFactory<Program> _factory;
 
-    private ApiHost(WebApplicationFactory<Program> factory, ManualClock clock)
+    private ApiHost(WebApplicationFactory<Program> factory, ManualClock clock, string connectionString)
     {
         _factory = factory;
         Clock = clock;
+        ConnectionString = connectionString;
     }
 
     public ManualClock Clock { get; }
+
+    /// <summary>This host's own database (tests may inspect stored rows).</summary>
+    public string ConnectionString { get; }
 
     public static async Task<ApiHost> StartAsync(int authPerMinute = 10_000, int playerPerMinute = 10_000)
     {
@@ -125,7 +129,7 @@ public sealed class ApiHost : IAsyncDisposable
             }
         }
 
-        return new ApiHost(factory, clock);
+        return new ApiHost(factory, clock, connection);
     }
 
     public HttpClient Client(string? accessToken = null)

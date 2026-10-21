@@ -27,6 +27,7 @@ builder.Services.AddSingleton<TokenService>();
 builder.Services.AddSingleton<AuthStore>();
 builder.Services.AddSingleton<WorldStore>();
 builder.Services.AddSingleton<SnapshotStore>();
+builder.Services.AddSingleton<InviteStore>();
 builder.Services.AddProblemDetails();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
@@ -102,6 +103,25 @@ worlds.MapPost("/", async (CreateWorldRequest request, ClaimsPrincipal user, Wor
     (WorldError error, WorldView? world) = await store.CreateAsync(PlayerId(user), request, ct);
     return error == WorldError.None ? Results.Created($"/v1/worlds/{world!.Id}", world) : Problem(error);
 });
+worlds.MapGet("/public", async (int? limit, DateTimeOffset? before, ClaimsPrincipal user, WorldStore store, CancellationToken ct) =>
+    Results.Ok(await store.PublicAsync(PlayerId(user), limit ?? 20, before, ct)));
+worlds.MapDelete("/{id:guid}", async (Guid id, ClaimsPrincipal user, WorldStore store, CancellationToken ct) => Problem(await store.DeleteAsync(PlayerId(user), id, ct)));
+worlds.MapPost("/{id:guid}/invites", async (Guid id, CreateInviteRequest request, ClaimsPrincipal user, InviteStore invites, CancellationToken ct) =>
+{
+    (WorldError error, InviteCreated? invite) = await invites.CreateAsync(PlayerId(user), id, request, ct);
+    return error == WorldError.None ? Results.Ok(invite) : Problem(error);
+});
+worlds.MapDelete("/{id:guid}/invites", async (Guid id, ClaimsPrincipal user, InviteStore invites, CancellationToken ct) => Problem(await invites.RevokeAllAsync(PlayerId(user), id, ct)));
+app.MapPost("/v1/invites/accept", async (AcceptInviteRequest request, ClaimsPrincipal user, InviteStore invites, CancellationToken ct) =>
+{
+    (InviteOutcome outcome, Guid world, string? role) = await invites.AcceptAsync(PlayerId(user), request.Code, ct);
+    return outcome switch
+    {
+        InviteOutcome.Accepted => Results.Ok(new { worldId = world, role }),
+        InviteOutcome.AlreadyOwner => Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "already_owner"),
+        _ => Results.NotFound(),
+    };
+}).RequireAuthorization().RequireRateLimiting("player");
 worlds.MapGet("/mine", async (ClaimsPrincipal user, WorldStore store, CancellationToken ct) => Results.Ok(await store.MineAsync(PlayerId(user), ct)));
 worlds.MapGet("/{id:guid}", async (Guid id, ClaimsPrincipal user, WorldStore store, CancellationToken ct) =>
     await store.GetAsync(PlayerId(user), id, ct) is WorldView view ? Results.Ok(view) : Results.NotFound());
