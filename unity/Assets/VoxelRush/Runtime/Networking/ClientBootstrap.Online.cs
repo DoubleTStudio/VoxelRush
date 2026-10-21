@@ -39,7 +39,7 @@ namespace VoxelRush.Networking
             string url = apiUrl.Trim().TrimEnd('/');
             if (_api == null || url != _boundApiUrl)
             {
-                _api = new PlayerApi(new UnityApiTransport(url), new PrefsTokenStore(url));
+                _api = new PlayerApi(new UnityApiTransport(url), SecureTokenStore.Create(url));
                 _boundApiUrl = url;
             }
 
