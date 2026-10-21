@@ -1,5 +1,7 @@
 using System.Collections.Generic;
+using System.Diagnostics;
 using UnityEngine;
+using VoxelRush.Core.Diagnostics;
 using VoxelRush.Core.Simulation;
 
 namespace VoxelRush.Networking.Vehicles
@@ -18,6 +20,7 @@ namespace VoxelRush.Networking.Vehicles
         private static NetworkSimulation? s_Instance;
         private readonly List<ITickParticipant> _participants = new List<ITickParticipant>();
         private readonly TickClock _clock = new TickClock();
+        private readonly Stopwatch _tickTimer = new Stopwatch();
         private SimulationMode _previousMode;
 
         public static NetworkSimulation Instance
@@ -40,6 +43,9 @@ namespace VoxelRush.Networking.Vehicles
         public float TickSeconds => (float)_clock.TickSeconds;
 
         public long DroppedTicks => _clock.DroppedTicks;
+
+        /// <summary>Per-tick work time (participants + physics) against the 33.3 ms budget.</summary>
+        public TickMetrics Metrics { get; } = new TickMetrics(1000.0 / VoxelRush.Core.SimulationConstants.ServerTickRate);
 
         public void Register(ITickParticipant participant)
         {
@@ -73,6 +79,7 @@ namespace VoxelRush.Networking.Vehicles
             for (int t = 0; t < ticks; t++)
             {
                 uint tick = _clock.Tick - (uint)(ticks - 1 - t);
+                _tickTimer.Restart();
                 for (int i = 0; i < _participants.Count; i++)
                 {
                     _participants[i].OnPreTick(tick, dt);
@@ -83,6 +90,8 @@ namespace VoxelRush.Networking.Vehicles
                 {
                     _participants[i].OnPostTick(tick, dt);
                 }
+
+                Metrics.Record(_tickTimer.Elapsed.TotalMilliseconds, Time.realtimeSinceStartupAsDouble);
             }
         }
     }

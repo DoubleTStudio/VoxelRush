@@ -1,0 +1,22 @@
+{
+  "task": "VR-013",
+  "date": "2026-10-21",
+  "host": "macOS arm64 (Apple Silicon), native server + 8 dev bots on one machine",
+  "unity": "6000.3.26f1",
+  "durationSeconds": 40,
+  "note": "re-recorded after the VR-012 spawn fix (cars on 8 distinct spawn points)",
+  "bots": 8,
+  "simulatedRttMs": 100,
+  "windowsAtFullLoad": 8,
+  "ticksAtFullLoad": 1205,
+  "tickRateMin": 29.8130720383197,
+  "p50MsMax": 0.981,
+  "p95MsMax": 1.6087,
+  "p99MsMax": 6.2061,
+  "tickMaxMs": 15.5369,
+  "overruns": 0,
+  "overrunRate": 0.0,
+  "botRttMsMean": 149.4417311781985,
+  "botMeanErrorMMax": 0.044548297305826,
+  "botSnapsMax": 0.0
+}
