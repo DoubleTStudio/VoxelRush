@@ -37,6 +37,15 @@ namespace VoxelRush.Tests.Domain.Performance
             return t;
         }
 
+        // COSM-002: spark trails are cut first on weak or hot devices.
+        [Test]
+        public void TrailParticles_AreOffAtLowTier_AndBoundedAbove()
+        {
+            Assert.That(QualityPresets.For(QualityTier.Low).TrailParticles, Is.Zero);
+            Assert.That(QualityPresets.For(QualityTier.Medium).TrailParticles, Is.InRange(1, QualityPresets.For(QualityTier.High).TrailParticles));
+            Assert.That(QualityPresets.For(QualityTier.High).TrailParticles, Is.LessThanOrEqualTo(128));
+        }
+
         [Test]
         public void OverBudget_StepsDown_OneTierAtATime_WithMinimumInterval()
         {

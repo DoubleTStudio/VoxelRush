@@ -57,9 +57,10 @@ On Apple Silicon the Linux (amd64 Mono) server aborts under Docker's Rosetta emu
 Platform settings are code: edit `unity/Assets/VoxelRush/Editor/ProjectConfiguration.cs`, then run **VoxelRush > Apply Project Configuration** (or `tools/unity.sh -quit -executeMethod VoxelRush.Editor.BuildEntryPoints.ConfigureProject`) and commit `ProjectSettings/`. An EditMode test fails on drift.
 
 ## Controls
-Landscape touch HUD (`Client.unity` → `TouchHud`): ◀ ▶ steer bottom-left; GAS, BRAKE, BOOST, DRIFT (handbrake) bottom-right; BUILD top centre; all inside the device safe area.
+Landscape touch HUD (`Client.unity` → `TouchHud`): ◀ ▶ steer bottom-left; GAS, BRAKE, BOOST, DRIFT (handbrake) bottom-right; BUILD top centre, with HORN beside it while a horn is equipped; all inside the device safe area.
 Build mode (BUILD cycles place → remove → off): tap the world to put a ghost there (green, or red with the reason), then PLACE/REMOVE or tap the ghost again; ROTATE turns ramps 90°, CANCEL drops the aim (desktop: R, Enter, Esc). The palette has six blocks and three ramps (low + high = a two-block 1:2 ramp; kicker = jump lip), see ADR-020.
-The `Driving` action map is defined in code (`Presentation/Input/DrivingControls.cs`); touch buttons emulate a virtual gamepad, so touch, gamepad (stick/triggers/face buttons) and keyboard (WASD/arrows, Shift boost, Space drift, B build) share one map.
+The `Driving` action map is defined in code (`Presentation/Input/DrivingControls.cs`); touch buttons emulate a virtual gamepad, so touch, gamepad (stick/triggers/face buttons) and keyboard (WASD/arrows, Shift boost, Space drift, B build, H horn) share one map.
+Racing: checkpoints are drawn in the world (next = bright with V chevrons, passed = lowered and dark, finish = checkered); the top-left panel shows speed, an arrow and distance to the next checkpoint and the race time. Vibration can be turned off in the pause menu.
 
 ## Dedicated server
 ```
@@ -77,7 +78,7 @@ docker compose -f docker/compose.yaml up --build
 
 ## Networked driving
 The server spawns one car per player on the shared `Arena`; physics ticks at 30 Hz. Owners predict and reconcile; other cars are interpolated (`docs/adr/ADR-015-authoritative-vehicle-netcode.md`).
-Development builds accept `-simRttMs N [-simJitterMs J] [-simLossPercent L]` to simulate network conditions for gameplay messages. Bots accept `-botDrive` (scripted driving), `-botCheat` (sends speed-hack inputs the server must reject), `-botPaint <sku>` (asks to show a paint; the server checks ownership) and `-botBlock <id>` (builder bots place that block id, e.g. 13 = low ramp).
+Development builds accept `-simRttMs N [-simJitterMs J] [-simLossPercent L]` to simulate network conditions for gameplay messages. Bots accept `-botDrive` (scripted driving), `-botCheat` (sends speed-hack inputs the server must reject), `-botEquip <sku>[,<sku>...]` (asks to show cosmetics, one per kind; the server checks ownership), `-botBlock <id>` (builder bots place that block id, e.g. 13 = low ramp) and, in development builds, `-botHorn` (presses the horn 5 times a second; the server relays at most one press a second).
 
 ## Test client and bots
 Clients connect with `-connect host:port [-smokeTestSeconds N]` (exit `0` stayed connected, `3` connect failed or rejected).

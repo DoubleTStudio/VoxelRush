@@ -187,7 +187,7 @@ namespace VoxelRush.Tests.PlayMode
         [Test]
         public void PaintPalette_HasAColourForEveryPaintTheServerCanShow()
         {
-            foreach (string sku in VoxelRush.Core.Cosmetics.PaintCatalog.Skus)
+            foreach (string sku in VoxelRush.Core.Cosmetics.CosmeticCatalog.SkusOf(VoxelRush.Core.Cosmetics.CosmeticKind.Paint))
             {
                 Assert.That(VoxelRush.Presentation.Store.PaintPalette.ColorOf(sku), Is.Not.Null, sku);
             }
@@ -201,19 +201,19 @@ namespace VoxelRush.Tests.PlayMode
             var view = Add<VoxelRush.Presentation.Store.CarPaintView>("CarPaintView");
             try
             {
-                VoxelRush.Networking.Vehicles.CarPaints.Set(car, "paint.ocean-blue");
+                VoxelRush.Networking.Vehicles.CarCosmetics.Set(car, VoxelRush.Core.Cosmetics.CosmeticKind.Paint, "paint.ocean-blue");
 
                 Color blue = Stored(VoxelRush.Presentation.Store.PaintPalette.ColorOf("paint.ocean-blue")!.Value);
                 Assert.That(BaseColorOf(body), Is.EqualTo(blue));
                 Assert.That(BaseColorOf(cabin), Is.EqualTo(blue));
                 Assert.That(wheel.HasPropertyBlock(), Is.False, "wheels keep their colour");
 
-                VoxelRush.Networking.Vehicles.CarPaints.Set(car, string.Empty);
+                VoxelRush.Networking.Vehicles.CarCosmetics.Set(car, VoxelRush.Core.Cosmetics.CosmeticKind.Paint, string.Empty);
                 Assert.That(body.HasPropertyBlock(), Is.False, "back to the default colour");
             }
             finally
             {
-                VoxelRush.Networking.Vehicles.CarPaints.Remove(car);
+                VoxelRush.Networking.Vehicles.CarCosmetics.Remove(car);
             }
         }
 
@@ -223,14 +223,14 @@ namespace VoxelRush.Tests.PlayMode
             Transform car = PaintableCar("EarlyCar", out Renderer body, out _, out _);
             try
             {
-                VoxelRush.Networking.Vehicles.CarPaints.Set(car, "paint.chrome");
+                VoxelRush.Networking.Vehicles.CarCosmetics.Set(car, VoxelRush.Core.Cosmetics.CosmeticKind.Paint, "paint.chrome");
                 Add<VoxelRush.Presentation.Store.CarPaintView>("CarPaintView");
 
                 Assert.That(BaseColorOf(body), Is.EqualTo(Stored(VoxelRush.Presentation.Store.PaintPalette.ColorOf("paint.chrome")!.Value)));
             }
             finally
             {
-                VoxelRush.Networking.Vehicles.CarPaints.Remove(car);
+                VoxelRush.Networking.Vehicles.CarCosmetics.Remove(car);
             }
         }
 
@@ -284,6 +284,13 @@ namespace VoxelRush.Tests.PlayMode
             VoxelRush.Presentation.UI.GameMenu.Apply(VoxelRush.Core.Settings.LocalSettings.Default);
             Assert.That(quality.Adaptive, Is.True, "Auto hands control back to adaptation");
             Assert.That(UnityEngine.Object.FindAnyObjectByType<VoxelRush.Presentation.Store.CarPaintView>(), Is.Not.Null);
+            Assert.That(UnityEngine.Object.FindAnyObjectByType<VoxelRush.Presentation.Store.CarCosmeticsView>(), Is.Not.Null);
+            yield return null;
+            var horn = UnityEngine.Object.FindAnyObjectByType<VoxelRush.Presentation.UI.HornButton>();
+            Assert.That(horn, Is.Not.Null);
+            Assert.That(horn!.Button, Is.Not.Null, "HORN cloned from the BUILD button");
+            Assert.That(horn.Button!.activeSelf, Is.False, "hidden without a confirmed horn");
+            Assert.That(horn.Button.GetComponent<UnityEngine.InputSystem.OnScreen.OnScreenButton>().controlPath, Is.EqualTo(VoxelRush.Presentation.Input.DrivingControls.TouchHornPath));
             var builder = UnityEngine.Object.FindAnyObjectByType<PhoneBuilder>();
             Assert.That(builder, Is.Not.Null);
             builder!.SetMode(PhoneBuilder.Mode.Place);

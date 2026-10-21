@@ -73,6 +73,8 @@ namespace VoxelRush.Networking.Race
                 {
                     Results = null;
                     WantsReady = false;
+                    // RACE-003 last race's crossings would highlight the wrong gate until the first new crossing.
+                    Progress = RaceGuide.AtCountdown(Progress);
                 }
 
                 State = state;

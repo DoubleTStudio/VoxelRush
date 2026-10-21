@@ -675,7 +675,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e42f4de57a16464a98f5ec522a00cccb, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: VoxelRush.Networking::VoxelRush.Networking.Vehicles.VehiclePaint
+  m_EditorClassIdentifier: VoxelRush.Networking::VoxelRush.Networking.Vehicles.VehicleLoadout
   ShowTopMostFoldoutHeaderGroup: 1
 --- !u!1 &7303403158378788785
 GameObject:

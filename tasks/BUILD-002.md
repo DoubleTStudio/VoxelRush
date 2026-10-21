@@ -4,7 +4,7 @@
 Players build ramps from the phone and drive up and jump off them. Ramps render, collide the same on the server and on predicting clients, persist, sync and can be destroyed like other player-built blocks (GDD MVP: 3 ramp variants).
 
 ## Changes
-- **Wire protocol 4 → 5** (`SimulationConstants.ProtocolVersion`). Message layouts are unchanged. Older clients would mesh ramp ids as cubes and mispredict collisions, so they are refused with `protocol_mismatch`.
+- **Wire protocol 5 → 6** (`SimulationConstants.ProtocolVersion`). Message layouts are unchanged. Older clients would mesh ramp ids as cubes and mispredict collisions, so they are refused with `protocol_mismatch`.
 - **No persisted format or generator change:** journal record v1, snapshot schema 1, chunk hashes and generator versions are untouched. Ramps are ordinary block bytes (ADR-020).
 - **Block ids** (`BlockIds`, `BlockShapes`): ids 13..24 = `13 + variant * 4 + yaw`. Ids 0..12 are unchanged. Yaw is the uphill direction (0 = +Z, 1 = +X, 2 = -Z, 3 = -X).
   - Low ramp 13..16 (0 → 0.5 m).

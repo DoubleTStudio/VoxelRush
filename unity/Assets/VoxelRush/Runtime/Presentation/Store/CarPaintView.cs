@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using VoxelRush.Core.Cosmetics;
 using VoxelRush.Networking.Vehicles;
 
 namespace VoxelRush.Presentation.Store
@@ -12,18 +13,18 @@ namespace VoxelRush.Presentation.Store
 
         private void OnEnable()
         {
-            CarPaints.Changed += Apply;
-            foreach (KeyValuePair<Transform, string> car in CarPaints.Current)
+            CarCosmetics.Changed += Apply;
+            foreach (KeyValuePair<Transform, string[]> car in CarCosmetics.Current)
             {
-                Apply(car.Key, car.Value);
+                Apply(car.Key, CosmeticKind.Paint, car.Value[(int)CosmeticKind.Paint]);
             }
         }
 
-        private void OnDisable() => CarPaints.Changed -= Apply;
+        private void OnDisable() => CarCosmetics.Changed -= Apply;
 
-        private void Apply(Transform car, string sku)
+        private void Apply(Transform car, CosmeticKind kind, string sku)
         {
-            if (car == null)
+            if (car == null || kind != CosmeticKind.Paint)
             {
                 return;
             }

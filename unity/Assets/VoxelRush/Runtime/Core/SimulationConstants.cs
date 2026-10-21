@@ -9,7 +9,7 @@ namespace VoxelRush.Core
         /// <summary>Player cap per dedicated server instance.</summary>
         public const int MaxPlayersPerServer = 8;
 
-        /// <summary>Wire protocol version sent in every message header. 2: session id in the connection payload (VR-062); 3: payload kind + join tickets (VR-080); 4: paint on the car (COSM-001); 5: ramp block ids 13..24 (BUILD-002).</summary>
-        public const ushort ProtocolVersion = 5;
+        /// <summary>Wire protocol version sent in every message header. 2: session id in the connection payload (VR-062); 3: payload kind + join tickets (VR-080); 4: paint on the car (COSM-001); 5: per-kind loadout and horn events on the car (COSM-002); 6: ramp block ids 13..24 (BUILD-002).</summary>
+        public const ushort ProtocolVersion = 6;
     }
 }
