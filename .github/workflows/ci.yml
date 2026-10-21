@@ -116,7 +116,8 @@ jobs:
       contents: read
       packages: write
     env:
-      UNITY_TEST_BUILD_TARGET: ""
+      # Player, not Server: a cached Library can be left on the Dedicated Server subtarget, which compiles out Presentation.
+      UNITY_TEST_BUILD_TARGET: Linux64
       BUILD_IOS: ${{ github.event_name != 'pull_request' }}
       # CI-001: PRs get the fast gate (unit tests, builds, core end-to-end tests); main, manual runs and PRs labelled
       # "full-ci" add Android, the long end-to-end suites, loss/stress/load and iOS.
