@@ -16,7 +16,7 @@ namespace VoxelRush.Networking
     /// Mobile endpoints arrive with join tickets (VR-080).
     /// </summary>
     [DisallowMultipleComponent]
-    public sealed class ClientBootstrap : MonoBehaviour
+    public sealed partial class ClientBootstrap : MonoBehaviour
     {
         public const int ExitCodeSuccess = 0;
         public const int ExitCodeInvalidArguments = 2;
@@ -198,17 +198,26 @@ namespace VoxelRush.Networking
             // Give the server a moment to process the disconnect before the new handshake.
             yield return new WaitForSecondsRealtime(0.5f);
             Reconnects++;
-            Connect(endpoint);
+            if (_onlineWorldId != null)
+            {
+                // Tickets are single-use: ask the API for a new one.
+                yield return RejoinOnline();
+            }
+            else
+            {
+                Connect(endpoint);
+            }
+
             _reconnecting = false;
         }
 
-        private void Connect(ServerEndpoint endpoint)
+        private void Connect(ServerEndpoint endpoint, byte[]? ticket = null)
         {
             _endpoint = endpoint;
-            Debug.Log(LogEvent.Format("client_connecting", ("endpoint", endpoint)));
+            Debug.Log(LogEvent.Format("client_connecting", ("endpoint", endpoint), ("ticket", ticket != null)));
             try
             {
-                _network = ClientNetwork.Connect(endpoint);
+                _network = ClientNetwork.Connect(endpoint, ticket);
             }
             catch (SocketException e)
             {
@@ -284,7 +293,7 @@ namespace VoxelRush.Networking
             var text = new GUIStyle(GUI.skin.textField) { fontSize = 28 };
             var button = new GUIStyle(GUI.skin.button) { fontSize = 28 };
             var small = new GUIStyle(GUI.skin.label) { fontSize = 22, alignment = TextAnchor.MiddleCenter, wordWrap = true };
-            GUILayout.BeginArea(new Rect((width - 560f) / 2f, 150f, 560f, 440f), GUI.skin.box);
+            GUILayout.BeginArea(new Rect(width / 2f - 580f, 120f, 560f, 440f), GUI.skin.box);
             GUILayout.Label("VoxelRush", big, GUILayout.Height(60));
             GUILayout.Label("Server address (host:port)", small);
             _address = GUILayout.TextField(_address, 64, text, GUILayout.Height(56));
@@ -296,6 +305,7 @@ namespace VoxelRush.Networking
                     PlayerPrefs.Save();
                     _joinError = null;
                     _joinScreen = false;
+                    _onlineWorldId = null;
                     Connect(endpoint);
                 }
                 else
@@ -316,6 +326,7 @@ namespace VoxelRush.Networking
             }
 
             GUILayout.EndArea();
+            DrawOnline(width, text, button, small);
         }
 
         private ServerEndpoint? EditorEndpoint()

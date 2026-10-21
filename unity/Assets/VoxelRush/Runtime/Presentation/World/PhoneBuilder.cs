@@ -24,11 +24,21 @@ namespace VoxelRush.Presentation.World
         [SerializeField] private float _maxAimDistance = 40f;
         [SerializeField] private byte _blockType = BlockIds.Brick;
 
+        // MVP-005 palette: building materials only (protected/reinforced blocks are server-placed).
+        private static readonly (byte Id, string Name)[] Palette =
+        {
+            (BlockIds.Brick, "Brick"), (BlockIds.Stone, "Stone"), (BlockIds.Wood, "Wood"),
+            (BlockIds.Concrete, "Concrete"), (BlockIds.Glass, "Glass"), (BlockIds.Metal, "Metal"),
+        };
+
         private readonly CameraGestures _gestures = new CameraGestures();
         private readonly EditValidator _validator = new EditValidator(ZoneMap.Empty);
         private readonly ReplicaWorld _world = new ReplicaWorld();
         private DrivingInputReader? _input;
         private GUIStyle? _style;
+        private GUIStyle? _button;
+        // The status box and palette in GUI coordinates; taps there are UI, not world aims.
+        private Rect _panel;
 
         public enum Mode
         {
@@ -42,6 +52,21 @@ namespace VoxelRush.Presentation.World
         public string Status { get; private set; } = string.Empty;
 
         public long Sent { get; private set; }
+
+        public byte BlockType => _blockType;
+
+        public void SelectBlock(byte blockType)
+        {
+            foreach ((byte id, string name) in Palette)
+            {
+                if (id == blockType)
+                {
+                    _blockType = blockType;
+                    Status = $"{name} selected";
+                    return;
+                }
+            }
+        }
 
         public void SetMode(Mode mode)
         {
@@ -101,7 +126,7 @@ namespace VoxelRush.Presentation.World
             }
 
             _gestures.Read(out _, out _);
-            if (Current != Mode.Off && _gestures.Tap is Vector2 tap)
+            if (Current != Mode.Off && _gestures.Tap is Vector2 tap && !_panel.Contains(new Vector2(tap.x, Screen.height - tap.y)))
             {
                 TapAt(tap);
             }
@@ -117,7 +142,26 @@ namespace VoxelRush.Presentation.World
             _style ??= new GUIStyle(GUI.skin.box) { fontSize = Mathf.Max(18, Screen.height / 28), wordWrap = true };
             string label = (Current == Mode.Place ? "BUILD: place" : "BUILD: remove") + (Status.Length > 0 ? $"\n{Status}" : string.Empty);
             float width = Screen.width * 0.4f;
-            GUI.Box(new Rect((Screen.width - width) / 2f, Screen.height - Screen.safeArea.yMax + 8f, width, _style.fontSize * 3.2f), label, _style);
+            float top = Screen.height - Screen.safeArea.yMax + 8f;
+            GUI.Box(new Rect((Screen.width - width) / 2f, top, width, _style.fontSize * 3.2f), label, _style);
+            _panel = new Rect((Screen.width - width) / 2f, top, width, _style.fontSize * (Current == Mode.Place ? 5.6f : 3.2f));
+            if (Current != Mode.Place)
+            {
+                return;
+            }
+
+            // Palette row under the status box; IMGUI clicks are not world taps (OverHud only sees uGUI).
+            _button ??= new GUIStyle(GUI.skin.button) { fontSize = _style.fontSize };
+            float cell = width / Palette.Length;
+            float y = top + _style.fontSize * 3.4f;
+            for (int i = 0; i < Palette.Length; i++)
+            {
+                bool selected = Palette[i].Id == _blockType;
+                if (GUI.Toggle(new Rect((Screen.width - width) / 2f + i * cell, y, cell - 4f, _style.fontSize * 2.2f), selected, Palette[i].Name, _button) && !selected)
+                {
+                    SelectBlock(Palette[i].Id);
+                }
+            }
         }
 
         // Validator and raycast view of the synced replica.

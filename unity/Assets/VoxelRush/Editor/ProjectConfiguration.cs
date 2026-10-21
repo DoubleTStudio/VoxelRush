@@ -58,6 +58,8 @@ namespace VoxelRush.Editor
             PlayerSettings.Android.minSdkVersion = AndroidMinSdk;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
             PlayerSettings.iOS.targetOSVersionString = IosMinimumVersion;
+            // MVP-004: dev builds may reach a LAN/Tailscale API over plain HTTP; release builds need HTTPS.
+            PlayerSettings.insecureHttpOption = InsecureHttpOption.DevelopmentOnly;
 
             var scenes = new EditorBuildSettingsScene[BuildScenes.Length];
             for (int i = 0; i < BuildScenes.Length; i++)
@@ -94,6 +96,7 @@ namespace VoxelRush.Editor
             Expect(issues, "Standalone.applicationIdentifier", PlayerSettings.GetApplicationIdentifier(NamedBuildTarget.Standalone), ApplicationIdentifier);
             Expect(issues, "Server.scriptingBackend", PlayerSettings.GetScriptingBackend(NamedBuildTarget.Server), ScriptingImplementation.Mono2x);
 
+            Expect(issues, "insecureHttpOption", PlayerSettings.insecureHttpOption, InsecureHttpOption.DevelopmentOnly);
             Expect(issues, "defaultInterfaceOrientation", PlayerSettings.defaultInterfaceOrientation, UIOrientation.AutoRotation);
             Expect(issues, "autorotateLandscapeLeft", PlayerSettings.allowedAutorotateToLandscapeLeft, true);
             Expect(issues, "autorotateLandscapeRight", PlayerSettings.allowedAutorotateToLandscapeRight, true);
