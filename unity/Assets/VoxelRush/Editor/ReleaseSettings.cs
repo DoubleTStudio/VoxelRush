@@ -97,8 +97,14 @@ namespace VoxelRush.Editor
             var previous = new Snapshot();
             if (HasKeystore)
             {
+                // Unity mangles absolute keystore paths outside the project on Linux ("/tmp/k" becomes "tmp/k"), so
+                // build from a copy in the project's Temp folder; the copy is deleted on dispose.
+                string copy = Path.Combine("Temp", "release-signing", Guid.NewGuid().ToString("N") + ".keystore");
+                Directory.CreateDirectory(Path.GetDirectoryName(copy)!);
+                File.Copy(Keystore!, copy);
+                previous.KeystoreCopy = copy;
                 PlayerSettings.Android.useCustomKeystore = true;
-                PlayerSettings.Android.keystoreName = Keystore;
+                PlayerSettings.Android.keystoreName = copy.Replace('\\', '/');
                 PlayerSettings.Android.keystorePass = KeystorePass;
                 PlayerSettings.Android.keyaliasName = KeyAlias;
                 PlayerSettings.Android.keyaliasPass = KeyPass;
@@ -129,8 +135,15 @@ namespace VoxelRush.Editor
             private readonly int _code = PlayerSettings.Android.bundleVersionCode;
             private readonly string _iosBuild = PlayerSettings.iOS.buildNumber;
 
+            public string? KeystoreCopy { get; set; }
+
             public void Dispose()
             {
+                if (KeystoreCopy != null && File.Exists(KeystoreCopy))
+                {
+                    File.Delete(KeystoreCopy);
+                }
+
                 PlayerSettings.Android.useCustomKeystore = _custom;
                 PlayerSettings.Android.keystoreName = _keystore;
                 PlayerSettings.Android.keyaliasName = _alias;
