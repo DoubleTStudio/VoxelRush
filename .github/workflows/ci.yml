@@ -2,6 +2,8 @@ name: CI
 
 on:
   pull_request:
+    # labeled: adding "full-ci" to a PR runs the full suite.
+    types: [opened, synchronize, reopened, labeled]
   push:
     branches: [main]
   workflow_dispatch:
@@ -58,6 +60,28 @@ jobs:
           name: api-test-results
           path: artifacts/test-results/
 
+  # CI-001: PRs that only touch the backend or docs skip the Unity job (and its single-license queue).
+  changes:
+    name: Changed areas
+    runs-on: ubuntu-24.04
+    outputs:
+      unity: ${{ steps.diff.outputs.unity }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [[ "$EVENT" != pull_request ]] || git diff --name-only "$BASE"...HEAD | grep -qvE '^(backend/|docs/|tasks/|docker/api/)|\.md$'; then
+            echo "unity=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "unity=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Backend/docs-only change: Unity tests and builds skipped (main runs everything)."
+          fi
+
   # Unity jobs need license secrets; skip them visibly instead of failing or faking green.
   unity-license:
     name: Unity license available
@@ -80,8 +104,8 @@ jobs:
   # One job so a run holds a single Personal license activation; the lock serialises runs across PRs.
   unity:
     name: Unity tests + builds
-    needs: [domain-tests, unity-license]
-    if: needs.unity-license.outputs.available == 'true'
+    needs: [domain-tests, unity-license, changes]
+    if: needs.unity-license.outputs.available == 'true' && needs.changes.outputs.unity == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     concurrency:
@@ -94,6 +118,9 @@ jobs:
     env:
       UNITY_TEST_BUILD_TARGET: ""
       BUILD_IOS: ${{ github.event_name != 'pull_request' }}
+      # CI-001: PRs get the fast gate (unit tests, builds, core end-to-end tests); main, manual runs and PRs labelled
+      # "full-ci" add Android, the long end-to-end suites, loss/stress/load and iOS.
+      FULL: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci') }}
     steps:
       # Editor + modules + Library + builds need ~25 GB; fail fast on a smaller runner.
       - name: Check free disk space
@@ -119,7 +146,8 @@ jobs:
         uses: RageAgainstThePixel/unity-setup@3da1aae07f5635ff478d3ad7f29782b3aea88258 # v2.6.0
         with:
           version-file: unity/ProjectSettings/ProjectVersion.txt
-          build-targets: ${{ env.BUILD_IOS == 'true' && 'StandaloneLinux64, Android, iOS' || 'StandaloneLinux64, Android' }}
+          # The Android module (SDK/NDK/JDK) is most of the install time; the fast gate doesn't build Android.
+          build-targets: ${{ env.BUILD_IOS == 'true' && 'StandaloneLinux64, Android, iOS' || env.FULL == 'true' && 'StandaloneLinux64, Android' || 'StandaloneLinux64' }}
           modules: linux-server
           hub-version: 3.22.3
       # Post step returns the seat, so Personal activations are not leaked between runs.
@@ -167,27 +195,31 @@ jobs:
         run: tools/build-api.sh && tools/smoke-auth.sh docker
       # SAVE-006: validated race rewards granted once through the API; a linked second device sees them.
       - name: Progression flow test (rewards, cross-device, no double grant)
+        if: env.FULL == 'true'
         run: tools/smoke-progression.sh docker
       # SAVE-005: one server per world (lease), idle shutdown releases it, the saved world survives the handover.
       - name: World lease test (single writer, idle shutdown, handover)
+        if: env.FULL == 'true'
         run: tools/smoke-lease.sh docker
       # SAVE-009: database rebuilt from a dump, point-in-time restore, stale server disk rebuilt from storage.
       - name: Recovery drill (pg_dump restore, point-in-time world restore)
+        if: env.FULL == 'true'
         run: tools/recovery-drill.sh docker
       # SAVE-008: device chunk cache: unchanged chunks confirmed on rejoin, tampered entries fall back to the server.
       - name: Chunk cache test (rejoin confirmations, tamper fallback)
+        if: env.FULL == 'true'
         run: tools/smoke-cache.sh docker
-      # VR-072 DoD: drive, world sync and race again with 2% packet loss inside Unity Transport; main/manual only.
+      # VR-072 DoD: drive, world sync and race again with 2% packet loss inside Unity Transport; full runs only.
       - name: Loss test (2% transport loss)
-        if: env.BUILD_IOS == 'true'
+        if: env.FULL == 'true'
         run: tools/smoke-loss.sh docker 2
-      # VR-082: 8 players build/cut/collapse while the server is SIGKILLed; no acknowledged edit may be lost. Main/manual only.
+      # VR-082: 8 players build/cut/collapse while the server is SIGKILLed; no acknowledged edit may be lost. Full runs only.
       - name: Destruction stress (8 bots, server crash)
-        if: env.BUILD_IOS == 'true'
+        if: env.FULL == 'true'
         run: tools/stress-destruction.sh docker
-      # VR-013: 8-player load; main/manual only (8 bot processes on the runner).
+      # VR-013: 8-player load; full runs only (8 bot processes on the runner).
       - name: Load test (8 bots, 30 Hz tick metrics)
-        if: env.BUILD_IOS == 'true'
+        if: env.FULL == 'true'
         run: tools/load-test.sh docker 8 30
 
       # VR-081: rollback drill against the previous :main image, then publish server + API images to GHCR.
@@ -201,6 +233,7 @@ jobs:
         run: for log in artifacts/smoke-world/server1.log artifacts/smoke-race/server.log artifacts/smoke-auth/server.log; do tools/check-server-log.sh "$log"; done
 
       - name: Build Android APK
+        if: env.FULL == 'true'
         run: tools/build.sh android
 
       - name: Build iOS Xcode project
@@ -239,6 +272,7 @@ jobs:
             !build/server/*_DoNotShip/
           retention-days: 7
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: env.FULL == 'true'
         with:
           name: android-apk
           path: build/android/VoxelRush.apk
