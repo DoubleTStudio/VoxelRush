@@ -21,6 +21,8 @@ namespace VoxelRush.Networking.World
     {
         private const int SnapshotsPerClientPerTick = 4;
         private const int SnapshotRequestsPerClientPerSecond = 8;
+        private const double CacheManifestWaitSeconds = 1.0;
+        private const int MaxConfirmationsPerTick = 512;
 
         private readonly NetworkManager _manager;
         private readonly WorldInfo _info;
@@ -33,6 +35,11 @@ namespace VoxelRush.Networking.World
         private readonly Func<IReadOnlyList<WorldBox>> _occupants;
         private readonly Queue<(ulong ClientId, EditIntent Intent)> _edits = new Queue<(ulong, EditIntent)>();
         private readonly Dictionary<ulong, Queue<ChunkCoord>> _pendingSnapshots = new Dictionary<ulong, Queue<ChunkCoord>>();
+        // SAVE-008: what each client says it has cached, and when its initial stream may start.
+        private readonly Dictionary<ulong, Dictionary<ChunkCoord, CachedChunk>> _cached = new Dictionary<ulong, Dictionary<ChunkCoord, CachedChunk>>();
+        private readonly Dictionary<ulong, double> _streamAfter = new Dictionary<ulong, double>();
+        private readonly List<CachedChunk> _confirm = new List<CachedChunk>();
+        private long _cacheConfirmed;
         private readonly Dictionary<ulong, (double WindowStart, int Count)> _requestRates = new Dictionary<ulong, (double, int)>();
         private readonly Dictionary<Guid, ulong> _awaitingDurable = new Dictionary<Guid, ulong>();
         private readonly List<ChunkMutationBatch> _durable = new List<ChunkMutationBatch>();
@@ -79,6 +86,7 @@ namespace VoxelRush.Networking.World
 
             manager.CustomMessagingManager.RegisterNamedMessageHandler(WorldMessages.Edit, OnEdit);
             manager.CustomMessagingManager.RegisterNamedMessageHandler(WorldMessages.SnapshotRequest, OnSnapshotRequest);
+            manager.CustomMessagingManager.RegisterNamedMessageHandler(WorldMessages.CacheManifest, OnCacheManifest);
         }
 
         public long Accepted => _authority.Accepted;
@@ -90,12 +98,16 @@ namespace VoxelRush.Networking.World
             WorldMessages.Send(_manager, WorldMessages.Info, clientId, _info.Encode(), NetworkDelivery.ReliableSequenced);
             var queue = new Queue<ChunkCoord>(_info.RegionChunks());
             _pendingSnapshots[clientId] = queue;
+            // Give the client a moment to say what it has cached; older or slow clients get full snapshots after it.
+            _streamAfter[clientId] = Time.realtimeSinceStartupAsDouble + CacheManifestWaitSeconds;
         }
 
         public void OnClientDisconnected(ulong clientId)
         {
             _pendingSnapshots.Remove(clientId);
             _requestRates.Remove(clientId);
+            _cached.Remove(clientId);
+            _streamAfter.Remove(clientId);
         }
 
         /// <summary>Per tick: apply queued edits in arrival order, publish durable ones, stream snapshots within budget.</summary>
@@ -167,9 +179,33 @@ namespace VoxelRush.Networking.World
 
             foreach (KeyValuePair<ulong, Queue<ChunkCoord>> pending in _pendingSnapshots)
             {
-                for (int i = 0; i < SnapshotsPerClientPerTick && pending.Value.Count > 0; i++)
+                if (_streamAfter.TryGetValue(pending.Key, out double after) && now < after)
                 {
-                    SendSnapshot(pending.Key, pending.Value.Dequeue());
+                    continue;
+                }
+
+                _cached.TryGetValue(pending.Key, out Dictionary<ChunkCoord, CachedChunk>? cached);
+                _confirm.Clear();
+                // Confirmations are 28 bytes each, so only full snapshots count against the per-tick budget.
+                for (int sent = 0; sent < SnapshotsPerClientPerTick && _confirm.Count < MaxConfirmationsPerTick && pending.Value.Count > 0;)
+                {
+                    ChunkCoord coord = pending.Value.Dequeue();
+                    ChunkData? chunk = _authority.GetChunk(coord);
+                    if (chunk != null && cached != null && cached.TryGetValue(coord, out CachedChunk have)
+                        && have.Revision == chunk.Revision && have.ContentHash == ChunkHash.Compute(chunk))
+                    {
+                        _confirm.Add(have);
+                        continue;
+                    }
+
+                    SendSnapshot(pending.Key, coord);
+                    sent++;
+                }
+
+                if (_confirm.Count > 0)
+                {
+                    _cacheConfirmed += _confirm.Count;
+                    WorldMessages.Send(_manager, WorldMessages.ChunkCurrent, pending.Key, CachedChunkWire.Encode(_confirm), NetworkDelivery.ReliableFragmentedSequenced);
                 }
             }
         }
@@ -195,7 +231,7 @@ namespace VoxelRush.Networking.World
             }
 
             Debug.Log(LogEvent.Format("world_closed", ("accepted", _authority.Accepted), ("rejected", _authority.Rejected), ("durable", _journal.DurableCount),
-                ("collapses", _collapse.Collapses), ("collapsedBlocks", _collapse.BlocksRemoved), ("collapseAbandoned", _collapse.Abandoned)));
+                ("cacheConfirmed", _cacheConfirmed), ("collapses", _collapse.Collapses), ("collapsedBlocks", _collapse.BlocksRemoved), ("collapseAbandoned", _collapse.Abandoned)));
         }
 
         private IEnumerable<ChunkData> Region()
@@ -216,6 +252,25 @@ namespace VoxelRush.Networking.World
                 // Queued and applied on the tick in arrival order (single writer).
                 _edits.Enqueue((senderClientId, intent));
             }
+        }
+
+        private void OnCacheManifest(ulong senderClientId, FastBufferReader reader)
+        {
+            // Once per connection, bounded by the codec; entries for chunks outside the region are simply never matched.
+            if (_cached.ContainsKey(senderClientId) || !_pendingSnapshots.ContainsKey(senderClientId)
+                || !WorldMessages.TryRead(reader, out byte[] payload) || !CachedChunkWire.TryDecode(payload, out List<CachedChunk> entries))
+            {
+                return;
+            }
+
+            var byCoord = new Dictionary<ChunkCoord, CachedChunk>(entries.Count);
+            foreach (CachedChunk e in entries)
+            {
+                byCoord[e.Coord] = e;
+            }
+
+            _cached[senderClientId] = byCoord;
+            _streamAfter.Remove(senderClientId);
         }
 
         private void OnSnapshotRequest(ulong senderClientId, FastBufferReader reader)

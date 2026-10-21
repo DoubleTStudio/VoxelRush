@@ -1,5 +1,6 @@
 using UnityEngine;
 using VoxelRush.Core.Input;
+using VoxelRush.Presentation.Settings;
 
 namespace VoxelRush.Presentation.UI
 {
@@ -20,6 +21,6 @@ namespace VoxelRush.Presentation.UI
             }
         }
 
-        private void Start() => Apply(ControlSettings.Default);
+        private void Start() => Apply(DeviceSettings.Current.Controls);
     }
 }

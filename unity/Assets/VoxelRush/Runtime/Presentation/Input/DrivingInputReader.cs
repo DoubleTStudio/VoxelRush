@@ -36,6 +36,7 @@ namespace VoxelRush.Presentation.Input
 
         private void Awake()
         {
+            Apply(Settings.DeviceSettings.Current.Controls);
             _map = DrivingControls.CreateMap();
             _steer = _map.FindAction(DrivingControls.Steer, true);
             _throttle = _map.FindAction(DrivingControls.Throttle, true);

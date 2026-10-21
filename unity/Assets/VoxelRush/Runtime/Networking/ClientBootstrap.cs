@@ -38,6 +38,10 @@ namespace VoxelRush.Networking
         private double _connectedAt = -1;
         private ServerEndpoint? _endpoint;
         private bool _reconnecting;
+        private string? _cacheRoot;
+
+        // SAVE-008: players cache chunks under persistentDataPath; headless bots only when given a directory.
+        public const string ChunkCacheArgument = "-chunkCache";
 
         public bool IsConnected => _network != null && _network.IsConnected;
 
@@ -64,6 +68,10 @@ namespace VoxelRush.Networking
             }
 
             _smokeTestSeconds = result.Options!.SmokeTestSeconds;
+            string[] launchArgs = Environment.GetCommandLineArgs();
+            int cacheArg = Array.IndexOf(launchArgs, ChunkCacheArgument);
+            _cacheRoot = cacheArg >= 0 && cacheArg + 1 < launchArgs.Length ? launchArgs[cacheArg + 1]
+                : Application.isBatchMode ? null : System.IO.Path.Combine(Application.persistentDataPath, "chunk-cache");
             string[] botArgs = Environment.GetCommandLineArgs();
             if (Array.IndexOf(botArgs, BotBuilder.BuildArgument) >= 0 || Array.IndexOf(botArgs, BotBuilder.TowerArgument) >= 0)
             {
@@ -99,6 +107,15 @@ namespace VoxelRush.Networking
             {
                 Debug.LogError(LogEvent.Format("client_connect_timeout", ("seconds", now - _startedAt)));
                 Exit(ExitCodeConnectFailed);
+            }
+        }
+
+        // Mobile apps are often killed in the background without a quit callback.
+        private void OnApplicationPause(bool paused)
+        {
+            if (paused)
+            {
+                _world?.SaveCache();
             }
         }
 
@@ -174,7 +191,7 @@ namespace VoxelRush.Networking
                     _connectedAt = Time.realtimeSinceStartupAsDouble;
                 }
 
-                _world = new WorldSyncClient(Unity.Netcode.NetworkManager.Singleton);
+                _world = new WorldSyncClient(Unity.Netcode.NetworkManager.Singleton, _cacheRoot);
                 RaceClient.Current = new RaceClient(Unity.Netcode.NetworkManager.Singleton);
                 BotBuilder.World = _world;
                 Debug.Log(LogEvent.Format("client_connected", ("endpoint", endpoint), ("seconds", _connectedAt - _startedAt)));
@@ -182,6 +199,7 @@ namespace VoxelRush.Networking
             _network.Disconnected += reason =>
             {
                 Debug.LogWarning(LogEvent.Format("client_disconnected", ("reason", reason.Length > 0 ? reason : "transport")));
+                _world?.SaveCache();
                 if (_smokeTestSeconds.HasValue && enabled && !_reconnecting)
                 {
                     Exit(ExitCodeConnectFailed);
@@ -213,6 +231,7 @@ namespace VoxelRush.Networking
             }
 
             Debug.Log(LogEvent.Format("client_stopping", ("exitCode", exitCode)));
+            _world?.SaveCache();
             enabled = false;
             StartCoroutine(ShutdownAndQuit(exitCode));
         }
