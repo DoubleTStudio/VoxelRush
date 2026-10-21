@@ -15,6 +15,7 @@ namespace VoxelRush.Editor
     {
         public const string ClientScene = "Assets/VoxelRush/Scenes/Client.unity";
         public const string ServerScene = "Assets/VoxelRush/Scenes/Server.unity";
+        public const string BotScene = "Assets/VoxelRush/Scenes/Bot.unity";
 
         private const string OutputArgument = "-buildOutput";
         private const string DevelopmentArgument = "-developmentBuild";
@@ -43,6 +44,14 @@ namespace VoxelRush.Editor
         // Native server for local runs on Apple Silicon, where amd64 Mono crashes under Rosetta.
         public static void BuildMacServer() =>
             Build(BuildTarget.StandaloneOSX, StandaloneBuildSubtarget.Server, ServerScene, "Builds/ServerMac");
+
+        // Headless bots: client connection logic in a server-subtarget player (no window/audio), for join and load tests.
+        // Desktop players crash headless on Linux without a window system, so bots never use the Player subtarget.
+        public static void BuildLinuxBot() =>
+            Build(BuildTarget.StandaloneLinux64, StandaloneBuildSubtarget.Server, BotScene, "Builds/BotLinux/VoxelRushBot.x86_64");
+
+        public static void BuildMacBot() =>
+            Build(BuildTarget.StandaloneOSX, StandaloneBuildSubtarget.Server, BotScene, "Builds/BotMac");
 
         [MenuItem("VoxelRush/Build/Android (APK)")]
         private static void BuildAndroidMenu() => BuildAndroid();
@@ -73,6 +82,18 @@ namespace VoxelRush.Editor
                 Directory.CreateDirectory(directory);
             }
 
+            // Scenes serialize against the editor's compiled scripts, whose defines (UNITY_SERVER) follow the
+            // active target/subtarget; a mismatch ships players with missing scripts, so refuse to build.
+            if (!EditorMatches(target, subtarget))
+            {
+                EditorUserBuildSettings.standaloneBuildSubtarget = subtarget;
+                EditorUserBuildSettings.SwitchActiveBuildTarget(BuildPipeline.GetBuildTargetGroup(target), target);
+                Debug.LogError($"Editor was not on {target}/{subtarget}; switched it. Batch mode: start Unity with " +
+                    "-buildTarget and -standaloneBuildSubtarget (tools/build.sh does). Interactive: rerun the build after recompilation.");
+                ExitIfBatchMode(1);
+                return;
+            }
+
             var options = new BuildPlayerOptions
             {
                 scenes = new[] { scene },
@@ -89,6 +110,11 @@ namespace VoxelRush.Editor
 
             ExitIfBatchMode(summary.result == BuildResult.Succeeded ? 0 : 1);
         }
+
+        private static bool EditorMatches(BuildTarget target, StandaloneBuildSubtarget subtarget) =>
+            EditorUserBuildSettings.activeBuildTarget == target
+            && (BuildPipeline.GetBuildTargetGroup(target) != BuildTargetGroup.Standalone
+                || EditorUserBuildSettings.standaloneBuildSubtarget == subtarget);
 
         private static string? GetArgumentValue(string[] args, string name)
         {
