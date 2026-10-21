@@ -18,6 +18,8 @@ namespace VoxelRush.World.Streaming
         private readonly List<(float Priority, int X, int Z)> _plan = new List<(float, int, int)>();
         private readonly List<ChunkCoord> _scratch = new List<ChunkCoord>();
         private readonly ChunkData?[] _neighbours = new ChunkData?[6];
+        private readonly HashSet<ChunkCoord> _stale = new HashSet<ChunkCoord>();
+        private readonly List<(float Distance, ChunkCoord Coord)> _rebuild = new List<(float, ChunkCoord)>();
 
         public ChunkStreamer(IChunkSource source, IChunkBackend backend, StreamingSettings settings)
         {
@@ -36,12 +38,120 @@ namespace VoxelRush.World.Streaming
 
         public long CollidersBuilt { get; private set; }
 
+        /// <summary>Car-adjacent rebuilds done before physics (DES-012).</summary>
+        public long CriticalRebuilds { get; private set; }
+
+        /// <summary>Car-adjacent stale chunks left for the next step because the critical budget ran out.</summary>
+        public long CriticalDeferred { get; private set; }
+
+        public int StaleCount => _stale.Count;
+
         public ChunkState StateOf(ChunkCoord coord) => _chunks.TryGetValue(coord, out Entry? entry) ? entry.State : ChunkState.Unloaded;
 
         public ChunkData? Get(ChunkCoord coord) => _chunks.TryGetValue(coord, out Entry? entry) ? entry.Data : null;
 
         /// <summary>Revision the current collider was built from (collider revision), or null without a collider.</summary>
         public ulong? ColliderRevision(ChunkCoord coord) => _chunks.TryGetValue(coord, out Entry? entry) && entry.State == ChunkState.Ready ? entry.ColliderRevision : (ulong?)null;
+
+        /// <summary>Ready, and built from the chunk's current blocks and its neighbours' current border blocks.</summary>
+        public bool IsColliderCurrent(ChunkCoord coord) =>
+            _chunks.TryGetValue(coord, out Entry? entry) && entry.State == ChunkState.Ready && !IsStale(coord, entry);
+
+        /// <summary>
+        /// Marks the collider of the chunk holding <paramref name="local"/> stale, plus the neighbour across a border
+        /// the block touches (its border faces depend on this block).
+        /// </summary>
+        public void MarkChanged(ChunkCoord chunk, LocalBlock local)
+        {
+            MarkStale(chunk);
+            int last = ChunkMath.Size - 1;
+            if (local.X == 0)
+            {
+                MarkStale(chunk.Offset(-1, 0, 0));
+            }
+
+            if (local.X == last)
+            {
+                MarkStale(chunk.Offset(1, 0, 0));
+            }
+
+            if (local.Y == 0)
+            {
+                MarkStale(chunk.Offset(0, -1, 0));
+            }
+
+            if (local.Y == last)
+            {
+                MarkStale(chunk.Offset(0, 1, 0));
+            }
+
+            if (local.Z == 0)
+            {
+                MarkStale(chunk.Offset(0, 0, -1));
+            }
+
+            if (local.Z == last)
+            {
+                MarkStale(chunk.Offset(0, 0, 1));
+            }
+        }
+
+        /// <summary>
+        /// Rebuilds stale colliders near cars before physics runs: within <see cref="StreamingSettings.CriticalDistance"/>
+        /// of each car and of where it will be after <see cref="StreamingSettings.CriticalLookaheadSeconds"/>, nearest first,
+        /// up to the critical budget. Cheap when nothing changed (only nearby chunks are inspected).
+        /// </summary>
+        public int RefreshCritical(IReadOnlyList<StreamingObserver> observers)
+        {
+            _rebuild.Clear();
+            float reach = Settings.CriticalDistance;
+            foreach (StreamingObserver o in observers)
+            {
+                float ax = o.X + o.VelocityX * Settings.CriticalLookaheadSeconds;
+                float az = o.Z + o.VelocityZ * Settings.CriticalLookaheadSeconds;
+                int x0 = ChunkMath.FloorDiv((int)Math.Floor(Math.Min(o.X, ax) - reach)), x1 = ChunkMath.FloorDiv((int)Math.Floor(Math.Max(o.X, ax) + reach));
+                int z0 = ChunkMath.FloorDiv((int)Math.Floor(Math.Min(o.Z, az) - reach)), z1 = ChunkMath.FloorDiv((int)Math.Floor(Math.Max(o.Z, az) + reach));
+                int y0 = Math.Max(Settings.MinChunkY, ChunkMath.FloorDiv((int)Math.Floor(o.Y - reach)));
+                int y1 = Math.Min(Settings.MaxChunkY, ChunkMath.FloorDiv((int)Math.Floor(o.Y + reach)));
+                for (int x = x0; x <= x1; x++)
+                {
+                    for (int y = y0; y <= y1; y++)
+                    {
+                        for (int z = z0; z <= z1; z++)
+                        {
+                            var coord = new ChunkCoord(x, y, z);
+                            if (!_chunks.TryGetValue(coord, out Entry? entry) || entry.State != ChunkState.Ready || !IsStale(coord, entry))
+                            {
+                                continue;
+                            }
+
+                            float d = Math.Min(DistanceToChunk(coord, o.X, o.Y, o.Z), DistanceToChunk(coord, ax, o.Y, az));
+                            if (d <= reach && !Contains(_rebuild, coord))
+                            {
+                                _rebuild.Add((d, coord));
+                            }
+                        }
+                    }
+                }
+            }
+
+            _rebuild.Sort((a, b) => a.Distance.CompareTo(b.Distance));
+            int rebuilt = 0;
+            foreach ((float _, ChunkCoord coord) in _rebuild)
+            {
+                if (rebuilt >= Settings.CriticalColliderBudget)
+                {
+                    CriticalDeferred += _rebuild.Count - rebuilt;
+                    break;
+                }
+
+                BuildCollider(coord, _chunks[coord]);
+                rebuilt++;
+            }
+
+            CriticalRebuilds += rebuilt;
+            return rebuilt;
+        }
 
         public bool IsColumnReady(int chunkX, int chunkZ)
         {
@@ -69,19 +179,29 @@ namespace VoxelRush.World.Streaming
         }
 
         /// <summary>Rebuilds colliders whose chunk changed since they were built (edits; VR-031). Bounded by the collider budget.</summary>
-        public int RefreshStaleColliders()
+        public int RefreshStaleColliders() => RefreshStaleColliders(Array.Empty<StreamingObserver>());
+
+        /// <summary>Background stale rebuilds, nearest to any car first, bounded by the collider budget.</summary>
+        public int RefreshStaleColliders(IReadOnlyList<StreamingObserver> observers)
         {
-            int rebuilt = 0;
-            _scratch.Clear();
+            _rebuild.Clear();
             foreach (KeyValuePair<ChunkCoord, Entry> entry in _chunks)
             {
-                if (entry.Value.State == ChunkState.Ready && entry.Value.ColliderRevision != entry.Value.Data.Revision)
+                if (entry.Value.State == ChunkState.Ready && IsStale(entry.Key, entry.Value))
                 {
-                    _scratch.Add(entry.Key);
+                    float d = float.MaxValue;
+                    foreach (StreamingObserver o in observers)
+                    {
+                        d = Math.Min(d, DistanceToChunk(entry.Key, o.X, o.Y, o.Z));
+                    }
+
+                    _rebuild.Add((d, entry.Key));
                 }
             }
 
-            foreach (ChunkCoord coord in _scratch)
+            _rebuild.Sort((a, b) => a.Distance.CompareTo(b.Distance));
+            int rebuilt = 0;
+            foreach ((float _, ChunkCoord coord) in _rebuild)
             {
                 if (rebuilt >= Settings.ColliderBudget)
                 {
@@ -93,6 +213,42 @@ namespace VoxelRush.World.Streaming
             }
 
             return rebuilt;
+        }
+
+        private bool IsStale(ChunkCoord coord, Entry entry) => entry.ColliderRevision != entry.Data.Revision || _stale.Contains(coord);
+
+        private void MarkStale(ChunkCoord coord)
+        {
+            if (_chunks.TryGetValue(coord, out Entry? entry) && entry.State == ChunkState.Ready)
+            {
+                _stale.Add(coord);
+            }
+        }
+
+        private static bool Contains(List<(float, ChunkCoord Coord)> list, ChunkCoord coord)
+        {
+            foreach ((float _, ChunkCoord c) in list)
+            {
+                if (c.Equals(coord))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static float DistanceToChunk(ChunkCoord c, float x, float y, float z)
+        {
+            float dx = Axis(x, c.X), dy = Axis(y, c.Y), dz = Axis(z, c.Z);
+            return (float)Math.Sqrt(dx * dx + dy * dy + dz * dz);
+        }
+
+        // Distance from a point to a chunk's extent along one axis (0 inside).
+        private static float Axis(float p, int chunk)
+        {
+            float min = chunk * ChunkMath.Size, max = min + ChunkMath.Size;
+            return p < min ? min - p : p > max ? p - max : 0f;
         }
 
         private void PlanColumns(IReadOnlyList<StreamingObserver> observers)
@@ -215,6 +371,7 @@ namespace VoxelRush.World.Streaming
             _backend.BuildCollider(entry.Data, _neighbours);
             entry.State = ChunkState.Ready;
             entry.ColliderRevision = entry.Data.Revision;
+            _stale.Remove(coord);
             CollidersBuilt++;
         }
 
@@ -254,6 +411,7 @@ namespace VoxelRush.World.Streaming
             foreach (ChunkCoord coord in _scratch)
             {
                 _chunks.Remove(coord);
+                _stale.Remove(coord);
                 _backend.Remove(coord);
             }
         }
