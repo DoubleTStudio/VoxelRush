@@ -38,6 +38,9 @@ namespace VoxelRush.World.Sync
 
         public int ChunkCount => _chunks.Count;
 
+        /// <summary>Called per block a delta changes (chunk, local index, old type, new type); not for snapshots.</summary>
+        public System.Action<ChunkCoord, ushort, byte, byte>? BlockChanged { get; set; }
+
         public ChunkData? Get(ChunkCoord coord) => _chunks.TryGetValue(coord, out ChunkData? chunk) ? chunk : null;
 
         /// <summary>Snapshot requests to send to the server (each chunk once until its snapshot arrives).</summary>
@@ -110,7 +113,12 @@ namespace VoxelRush.World.Sync
         {
             foreach (BlockChange change in batch.Changes)
             {
-                chunk.Set(LocalBlock.FromIndex(change.Index), change.BlockType);
+                LocalBlock local = LocalBlock.FromIndex(change.Index);
+                byte old = chunk.Get(local);
+                if (chunk.Set(local, change.BlockType))
+                {
+                    BlockChanged?.Invoke(batch.Chunk, change.Index, old, change.BlockType);
+                }
             }
 
             if (chunk.Revision != batch.NewRevision)
