@@ -16,8 +16,13 @@ public sealed class ApiOptions
     /// <summary>Token game servers present on internal endpoints (≥ 32 characters).</summary>
     public string ServiceToken { get; set; } = string.Empty;
 
-    /// <summary>Where joiners connect (host:port) until server allocation exists.</summary>
+    /// <summary>Where joiners connect (host:port) when no host agent is configured.</summary>
     public string GameServerEndpoint { get; set; } = "127.0.0.1:7777";
+
+    /// <summary>ALLOC-001 host agent base URL (e.g. http://host-agent:8080/); when set, each world gets its own server.</summary>
+    public string HostAgentUrl { get; set; } = string.Empty;
+
+    public int HostAgentTimeoutSeconds { get; set; } = 10;
 
     public int AccessTokenMinutes { get; set; } = 15;
 
@@ -59,6 +64,16 @@ public sealed class ApiOptions
         if (ServiceToken.Length < 32)
         {
             throw new InvalidOperationException("VoxelRush:ServiceToken must be at least 32 characters.");
+        }
+
+        if (HostAgentUrl.Length > 0 && (!Uri.TryCreate(HostAgentUrl, UriKind.Absolute, out Uri? agent) || (agent.Scheme != Uri.UriSchemeHttp && agent.Scheme != Uri.UriSchemeHttps)))
+        {
+            throw new InvalidOperationException("VoxelRush:HostAgentUrl must be an absolute http(s) URL.");
+        }
+
+        if (HostAgentTimeoutSeconds is < 1 or > 60)
+        {
+            throw new InvalidOperationException("VoxelRush:HostAgentTimeoutSeconds must be 1..60.");
         }
     }
 
