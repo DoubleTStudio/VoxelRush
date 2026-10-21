@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # SAVE-006 end to end: two API players race on a ticket-only server; the server grants XP for the validated results
 # through the API (idempotent keys); a second device linked to the winner sees the same progression; re-sending a
-# grant changes nothing. COSM-001: A shows an owned paint to B; B's unowned paint is refused by the server.
+# grant changes nothing. COSM-001/002: A shows an owned paint and decal to B and honks (rate-limited by the server);
+# B's unowned paint and flag are refused, and B can't honk without a horn.
 # Usage: tools/smoke-progression.sh native|docker   (API and PostgreSQL always run in Docker)
 set -euo pipefail
 
@@ -41,6 +42,11 @@ WORLD_ID=$(curl -fsS -X POST "$API/v1/worlds" -H "Authorization: Bearer $a_token
 ticket() { curl -fsS -X POST "$API/v1/worlds/$WORLD_ID/join" -H "Authorization: Bearer $1" | json "['ticket']"; }
 # A owns the free level-1 paint; B owns nothing.
 curl -fsS -X POST "$API/v1/players/me/entitlements/claim" -H "Authorization: Bearer $a_token" -H "Content-Type: application/json" -d '{"sku":"paint.racing-red"}' >/dev/null
+# A is also granted the level-gated decal and horn (as a server grant, so no XP is needed before the race).
+for sku in decal.lightning horn.retro; do
+  curl -fsS -X POST "$API/internal/v1/players/$a_id/entitlements" -H "X-Service-Token: $SERVICE_TOKEN" -H "Content-Type: application/json" \
+    -d "{\"sku\":\"$sku\",\"source\":\"grant\",\"transactionId\":\"smoke-$sku-$(openssl rand -hex 4)\"}" >/dev/null
+done
 
 if [[ "$MODE" == "docker" ]]; then
   docker build -q -f "$ROOT/docker/server/Dockerfile" -t voxelrush-server:smoke "$ROOT/build/server" >/dev/null
@@ -66,21 +72,36 @@ bot() { local log="$1"; shift
   fi
   pids+=($!)
 }
-bot "$LOGS/a.log" -joinTicket "$(ticket "$a_token")" -botRace -botPaint paint.racing-red -smokeTestSeconds 40; A=$!
+bot "$LOGS/a.log" -joinTicket "$(ticket "$a_token")" -botRace -botEquip paint.racing-red,decal.lightning,horn.retro -botHorn -smokeTestSeconds 40; A=$!
 sleep 0.5
-bot "$LOGS/b.log" -joinTicket "$(ticket "$b_token")" -botRace -botPaint paint.chrome -smokeTestSeconds 40; B=$!
+bot "$LOGS/b.log" -joinTicket "$(ticket "$b_token")" -botRace -botEquip paint.chrome,flag.checkered-gold -botHorn -smokeTestSeconds 40; B=$!
 wait "$A" || fail "racer A failed"; wait "$B" || fail "racer B failed"
 wait "$SERVER_PID" || fail "server exited non-zero"
 grep -q "event=race_rewards_queued .*grants=2" "$LOGS/server.log" || fail "server did not queue 2 rewards"
 [[ $(grep -c "event=reward_grant_sent .*status=200" "$LOGS/server.log") -eq 2 ]] || fail "rewards not confirmed by the API"
 
-grep -q "event=server_paint mode=Verified" "$LOGS/server.log" || fail "server not verifying paint ownership"
-grep -q "event=vehicle_paint_applied .*sku=paint.racing-red" "$LOGS/server.log" || fail "owned paint not applied"
-grep -q "event=vehicle_paint_rejected .*sku=paint.chrome reason=not_owned" "$LOGS/server.log" || fail "unowned paint not refused"
-grep -q "event=vehicle_paint_seen .*own=false sku=paint.racing-red" "$LOGS/b.log" || fail "B did not see A's paint"
-grep -q "event=vehicle_paint_seen .*own=true sku=paint.racing-red" "$LOGS/a.log" || fail "A did not see its own paint"
-if grep -q "event=vehicle_paint_seen .*sku=paint.chrome" "$LOGS/a.log" "$LOGS/b.log"; then fail "an unowned paint was shown"; fi
-echo "paint: A's owned paint shown to both; B's unowned paint refused"
+grep -q "event=server_cosmetics mode=Verified" "$LOGS/server.log" || fail "server not verifying cosmetic ownership"
+grep -q "event=vehicle_cosmetic_applied .*kind=paint sku=paint.racing-red" "$LOGS/server.log" || fail "owned paint not applied"
+grep -q "event=vehicle_cosmetic_applied .*kind=decal sku=decal.lightning" "$LOGS/server.log" || fail "owned decal not applied"
+grep -q "event=vehicle_cosmetic_applied .*kind=horn sku=horn.retro" "$LOGS/server.log" || fail "owned horn not applied"
+grep -q "event=vehicle_cosmetic_rejected .*kind=paint sku=paint.chrome reason=not_owned" "$LOGS/server.log" || fail "unowned paint not refused"
+grep -q "event=vehicle_cosmetic_rejected .*kind=flag sku=flag.checkered-gold reason=not_owned" "$LOGS/server.log" || fail "unowned flag not refused"
+grep -q "event=vehicle_cosmetic_seen .*own=false kind=paint sku=paint.racing-red" "$LOGS/b.log" || fail "B did not see A's paint"
+grep -q "event=vehicle_cosmetic_seen .*own=false kind=decal sku=decal.lightning" "$LOGS/b.log" || fail "B did not see A's decal"
+grep -q "event=vehicle_cosmetic_seen .*own=true kind=paint sku=paint.racing-red" "$LOGS/a.log" || fail "A did not see its own paint"
+if grep -q "event=vehicle_cosmetic_seen .*sku=\(paint.chrome\|flag.checkered-gold\)" "$LOGS/a.log" "$LOGS/b.log"; then fail "an unowned cosmetic was shown"; fi
+echo "cosmetics: A's owned paint and decal shown to both; B's unowned paint and flag refused"
+
+# Both bots press the horn 5 times a second; the server relays A's at most once a second and never B's.
+grep -q "event=vehicle_horn_rejected .*reason=rate_limited" "$LOGS/server.log" || fail "horn spam not rate-limited"
+grep -q "event=vehicle_horn_rejected .*reason=no_horn" "$LOGS/server.log" || fail "horn without a horn not refused"
+relayed=$(grep -c "event=vehicle_horn_relayed" "$LOGS/server.log" || true)
+heard=$(grep -c "event=vehicle_horn_heard .*sku=horn.retro" "$LOGS/b.log" || true)
+[[ "$relayed" -ge 5 && "$relayed" -le 42 ]] || fail "expected 5..42 relayed horn presses in ~40 s, got $relayed"
+[[ "$heard" -ge 5 && "$heard" -le "$relayed" ]] || fail "B heard $heard of $relayed relayed horns"
+if grep -q "event=vehicle_horn_heard" "$LOGS/a.log"; then fail "A heard a horn nobody owns"; fi
+grep -q "event=server_horn_summary relayed=$relayed " "$LOGS/server.log" || fail "horn summary missing"
+echo "horn: $relayed presses relayed (rate-limited), B heard $heard, B's presses refused"
 
 xp() { curl -fsS "$API/v1/players/me/progress" -H "Authorization: Bearer $1" | json "['xp']"; }
 xa=$(xp "$a_token"); xb=$(xp "$b_token")
@@ -101,4 +122,4 @@ dup=$(curl -fsS -X POST "$API/internal/v1/players/$a_id/grants" -H "X-Service-To
   -d "{\"grantKey\":\"$key\",\"kind\":\"xp\",\"amount\":999,\"source\":\"race\"}" | json "['duplicate']")
 [[ "$dup" == "True" && "$(xp "$a_token")" == "$xa" ]] || fail "re-sent grant was applied again"
 echo "A=$xa XP, B=$xb XP; second device matches; replay ignored"
-echo "PROGRESSION SMOKE PASS ($MODE): validated race rewards, cross-device continuity, no double grant, owned paints only"
+echo "PROGRESSION SMOKE PASS ($MODE): validated race rewards, cross-device continuity, no double grant, owned cosmetics only, rate-limited horn"

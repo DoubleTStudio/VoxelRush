@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using UnityEngine;
+using VoxelRush.Core.Cosmetics;
 using VoxelRush.Networking;
 using VoxelRush.Networking.Online;
 using VoxelRush.Networking.Vehicles;
@@ -9,8 +10,9 @@ using VoxelRush.Networking.Vehicles;
 namespace VoxelRush.Presentation.Store
 {
     /// <summary>
-    /// Garage on the join screen (ECON-003): level, cosmetics catalog with owned/claim/locked/buy states, and the
-    /// equipped paint. The equipped paint is sent to the server, which shows it to everyone if owned (COSM-001).
+    /// Garage on the join screen (ECON-003): level, cosmetics catalog with owned/claim/locked/buy states, and one
+    /// equipped item per kind (paint, decal, trail, horn, flag). Equipped items are sent to the server, which shows
+    /// them to everyone if owned (COSM-001, COSM-002).
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class GarageMenu : MonoBehaviour
@@ -26,13 +28,32 @@ namespace VoxelRush.Presentation.Store
         private string? _status;
         private Vector2 _scroll;
 
-        public string? EquippedPaint => PlayerPrefs.GetString(PaintKey, string.Empty) is { Length: > 0 } sku ? sku : null;
+        public string? EquippedPaint => EquippedOf(CosmeticKind.Paint);
+
+        /// <summary>Device key of the equipped item of a kind (paint keeps its ECON-003 key).</summary>
+        public static string KeyOf(CosmeticKind kind) => "voxelrush." + CosmeticCatalog.NameOf(kind);
+
+        public static string? EquippedOf(CosmeticKind kind) => PlayerPrefs.GetString(KeyOf(kind), string.Empty) is { Length: > 0 } sku ? sku : null;
+
+        /// <summary>Equips (or, if already equipped, unequips) an item in its kind's slot and tells the own car.</summary>
+        public static void Toggle(CosmeticKind kind, string sku)
+        {
+            PlayerPrefs.SetString(KeyOf(kind), EquippedOf(kind) == sku ? string.Empty : sku);
+            PlayerPrefs.Save();
+            LocalPlayer.Equip(kind, EquippedOf(kind));
+        }
 
         /// <summary>What the garage shows for an item, from the player's level and what they own.</summary>
         public static string StateOf(CatalogEntry item, int level, bool owned) =>
             owned ? "owned" : item.unlock.store ? "buy" : level >= item.unlock.level ? "claim" : "locked";
 
-        private void Awake() => LocalPlayer.EquippedPaint = EquippedPaint;
+        private void Awake()
+        {
+            for (int i = 0; i < CosmeticCatalog.KindCount; i++)
+            {
+                LocalPlayer.Equip((CosmeticKind)i, EquippedOf((CosmeticKind)i));
+            }
+        }
 
         private void OnGUI()
         {
@@ -102,13 +123,11 @@ namespace VoxelRush.Presentation.Store
             GUILayout.Label($"{item.name}  ({item.kind})", small, GUILayout.Width(400));
             switch (state)
             {
-                case "owned" when PaintPalette.IsPaint(item.sku):
-                    bool equipped = EquippedPaint == item.sku;
-                    if (GUILayout.Button(equipped ? "Equipped" : "Equip", button, GUILayout.Height(52)))
+                case "owned" when CosmeticCatalog.TryKindOf(item.sku, out CosmeticKind kind):
+                    bool equipped = EquippedOf(kind) == item.sku;
+                    if (GUILayout.Button(equipped ? "Unequip" : "Equip", button, GUILayout.Height(52)))
                     {
-                        PlayerPrefs.SetString(PaintKey, equipped ? string.Empty : item.sku);
-                        PlayerPrefs.Save();
-                        LocalPlayer.EquippedPaint = EquippedPaint;
+                        Toggle(kind, item.sku);
                     }
 
                     break;

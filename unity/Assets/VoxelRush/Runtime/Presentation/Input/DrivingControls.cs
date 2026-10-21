@@ -15,6 +15,7 @@ namespace VoxelRush.Presentation.Input
         public const string Boost = "Boost";
         public const string Handbrake = "Handbrake";
         public const string BuildMode = "BuildMode";
+        public const string Horn = "Horn";
         public const string Look = "Look";
 
         // Control paths the on-screen touch buttons emulate.
@@ -25,6 +26,7 @@ namespace VoxelRush.Presentation.Input
         public const string TouchBoostPath = "<Gamepad>/buttonSouth";
         public const string TouchHandbrakePath = "<Gamepad>/buttonEast";
         public const string TouchBuildModePath = "<Gamepad>/buttonNorth";
+        public const string TouchHornPath = "<Gamepad>/leftShoulder";
 
         public static InputActionMap CreateMap()
         {
@@ -49,6 +51,7 @@ namespace VoxelRush.Presentation.Input
             map.AddAction(Boost, InputActionType.Button, TouchBoostPath).AddBinding("<Keyboard>/leftShift");
             map.AddAction(Handbrake, InputActionType.Button, TouchHandbrakePath).AddBinding("<Keyboard>/space");
             map.AddAction(BuildMode, InputActionType.Button, TouchBuildModePath).AddBinding("<Keyboard>/b");
+            map.AddAction(Horn, InputActionType.Button, TouchHornPath).AddBinding("<Keyboard>/h");
 
             InputAction look = map.AddAction(Look, InputActionType.Value, "<Gamepad>/rightStick", expectedControlLayout: "Vector2");
             look.AddBinding("<Pointer>/delta");
