@@ -42,3 +42,7 @@ obj/
 *.mobileprovision
 *.ulf
 .env
+
+# Temp scenes the Unity test runner leaves behind when a run is interrupted
+unity/Assets/InitTestScene*.unity
+unity/Assets/InitTestScene*.unity.meta

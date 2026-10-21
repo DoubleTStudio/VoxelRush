@@ -1,14 +1,28 @@
 {
     "name": "VoxelRush.Tests.EditMode",
     "rootNamespace": "VoxelRush.Tests.EditMode",
-    "references": ["VoxelRush.Core", "VoxelRush.Server", "VoxelRush.Editor", "Unity.RenderPipelines.Universal.Runtime", "UnityEngine.TestRunner", "UnityEditor.TestRunner"],
-    "includePlatforms": ["Editor"],
+    "references": [
+        "VoxelRush.Core",
+        "VoxelRush.Gameplay",
+        "VoxelRush.Server",
+        "VoxelRush.Editor",
+        "Unity.RenderPipelines.Universal.Runtime",
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": true,
-    "precompiledReferences": ["nunit.framework.dll"],
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
     "autoReferenced": false,
-    "defineConstraints": ["UNITY_INCLUDE_TESTS"],
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
     "versionDefines": [],
     "noEngineReferences": false
 }
