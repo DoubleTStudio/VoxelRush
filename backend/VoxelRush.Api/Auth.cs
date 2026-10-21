@@ -67,6 +67,17 @@ public sealed class AuthStore(NpgsqlDataSource db, TokenService tokens, ApiOptio
         return new TokenPair(playerId, access, refresh, expires);
     }
 
+    /// <summary>A new login (token family) for an existing player, e.g. a second device after linking.</summary>
+    public async Task<TokenPair> SignInAsync(Guid playerId, CancellationToken ct)
+    {
+        await using NpgsqlConnection c = await db.OpenConnectionAsync(ct);
+        await using NpgsqlTransaction tx = await c.BeginTransactionAsync(ct);
+        string refresh = await InsertRefreshAsync(c, tx, playerId, Guid.NewGuid(), ct);
+        await tx.CommitAsync(ct);
+        (string access, DateTimeOffset expires) = tokens.IssueAccessToken(playerId);
+        return new TokenPair(playerId, access, refresh, expires);
+    }
+
     public async Task<(RefreshOutcome Outcome, TokenPair? Tokens)> RefreshAsync(string refreshToken, CancellationToken ct)
     {
         byte[] hash = TokenService.Hash(refreshToken);

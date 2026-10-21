@@ -26,9 +26,12 @@ namespace VoxelRush.Networking.Race
         private readonly HashSet<ulong> _respawned = new HashSet<ulong>();
         private readonly byte[] _trackPayload;
         private RacePhase _phase;
+        private readonly Action<IReadOnlyList<RewardGrant>>? _rewards;
 
-        public RaceServer(NetworkManager manager, TrackDefinition track, VehicleSpawner vehicles, int? autoStart)
+        /// <param name="rewards">Receives XP grants for server-validated results (ticketed servers only: racer keys are player ids).</param>
+        public RaceServer(NetworkManager manager, TrackDefinition track, VehicleSpawner vehicles, int? autoStart, Action<IReadOnlyList<RewardGrant>>? rewards = null)
         {
+            _rewards = rewards;
             _manager = manager;
             _vehicles = vehicles;
             _autoStart = autoStart;
@@ -170,6 +173,12 @@ namespace VoxelRush.Networking.Race
             }
 
             WorldMessages.SendToAll(_manager, RaceMessages.Results, new RaceResultsMessage(Race.RaceId, entries).Encode(), NetworkDelivery.ReliableSequenced);
+            if (_rewards != null)
+            {
+                IReadOnlyList<RewardGrant> grants = RaceRewards.For(Race.RaceId, Race.Results, key => Guid.TryParseExact(key, "N", out Guid player) ? player : (Guid?)null);
+                _rewards(grants);
+                Debug.Log(LogEvent.Format("race_rewards_queued", ("raceId", Race.RaceId), ("grants", grants.Count)));
+            }
         }
 
         private static Vec3 ToVec(Vector3 v) => new Vec3(v.x, v.y, v.z);

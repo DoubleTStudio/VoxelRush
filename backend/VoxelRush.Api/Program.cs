@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Threading.RateLimiting;
 using Amazon.S3;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -28,6 +29,7 @@ builder.Services.AddSingleton<AuthStore>();
 builder.Services.AddSingleton<WorldStore>();
 builder.Services.AddSingleton<SnapshotStore>();
 builder.Services.AddSingleton<InviteStore>();
+builder.Services.AddSingleton<ProgressionStore>();
 builder.Services.AddProblemDetails();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
@@ -97,6 +99,36 @@ auth.MapPost("/refresh", async (RefreshRequest request, AuthStore store, Cancell
     return outcome == RefreshOutcome.Ok ? Results.Ok(tokens) : Results.Unauthorized();
 });
 
+// SAVE-006: link a second device to the same player.
+auth.MapPost("/link-code", async (ClaimsPrincipal user, ProgressionStore store, CancellationToken ct) =>
+    Results.Ok(await store.CreateLinkCodeAsync(PlayerId(user), ct))).RequireAuthorization();
+auth.MapPost("/link", async (LinkRequest request, ProgressionStore store, AuthStore authStore, CancellationToken ct) =>
+    await store.RedeemLinkCodeAsync(request.Code, ct) is Guid player ? Results.Ok(await authStore.SignInAsync(player, ct)) : Results.NotFound());
+
+RouteGroupBuilder me = app.MapGroup("/v1/players/me").RequireAuthorization().RequireRateLimiting("player");
+me.MapGet("/progress", async (ClaimsPrincipal user, ProgressionStore store, CancellationToken ct) => Results.Ok(await store.GetAsync(PlayerId(user), ct)));
+me.MapGet("/settings", async (ClaimsPrincipal user, ProgressionStore store, CancellationToken ct) =>
+{
+    SettingsView view = await store.GetSettingsAsync(PlayerId(user), ct);
+    return Results.Ok(view);
+});
+me.MapPut("/settings", async (HttpRequest http, JsonElement settings, ClaimsPrincipal user, ProgressionStore store, CancellationToken ct) =>
+{
+    // Optimistic concurrency: If-Match carries the version the device last read ("0" for none).
+    if (!long.TryParse(http.Headers.IfMatch.ToString().Trim('"'), out long expected) || expected < 0)
+    {
+        return Results.Problem(statusCode: StatusCodes.Status428PreconditionRequired, title: "if_match_required");
+    }
+
+    (SettingsOutcome outcome, long version) = await store.PutSettingsAsync(PlayerId(user), settings, expected, ct);
+    return outcome switch
+    {
+        SettingsOutcome.Saved => Results.Ok(new { version }),
+        SettingsOutcome.VersionConflict => Results.Problem(statusCode: StatusCodes.Status412PreconditionFailed, title: "version_conflict"),
+        _ => Results.Problem(statusCode: StatusCodes.Status400BadRequest, title: "invalid_settings"),
+    };
+});
+
 RouteGroupBuilder worlds = app.MapGroup("/v1/worlds").RequireAuthorization().RequireRateLimiting("player");
 worlds.MapPost("/", async (CreateWorldRequest request, ClaimsPrincipal user, WorldStore store, CancellationToken ct) =>
 {
@@ -152,6 +184,13 @@ internalApi.MapGet("/latest", async (Guid id, int x, int y, int z, SnapshotStore
     return error == SnapshotError.None ? Results.Ok(new { url = url!.Url, revision, sha256 = sha }) : SnapshotProblem(error);
 });
 
+// Game servers grant rewards after server-validated results; the grant key makes retries harmless.
+app.MapPost("/internal/v1/players/{id:guid}/grants", async (Guid id, GrantRequest request, ProgressionStore store, CancellationToken ct) =>
+{
+    (bool ok, GrantResult? result) = await store.GrantAsync(id, request, ct);
+    return ok ? Results.Ok(result) : Results.Problem(statusCode: StatusCodes.Status400BadRequest, title: "invalid_grant");
+}).AddEndpointFilter(async (context, next) => ServiceAuthorized(context.HttpContext, options) ? await next(context) : Results.Unauthorized());
+
 app.Run();
 
 static Guid PlayerId(ClaimsPrincipal user) => Guid.Parse(user.FindFirstValue(JwtRegisteredClaimNames.Sub)!);
@@ -181,6 +220,8 @@ static bool ServiceAuthorized(HttpContext http, ApiOptions options)
 }
 
 public sealed record RefreshRequest(string? RefreshToken);
+
+public sealed record LinkRequest(string? Code);
 
 /// <summary>Entry point (public for WebApplicationFactory in tests).</summary>
 public partial class Program;

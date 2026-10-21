@@ -101,7 +101,14 @@ namespace VoxelRush.World.Persistence
         {
             _queue.CompleteAdding();
             _thread.Join();
-            _file.Dispose();
+            try
+            {
+                _file.Dispose();
+            }
+            catch (IOException) when (_failure != null)
+            {
+                // The disk already failed (recorded in Failure); closing must still release the writer.
+            }
             _queue.Dispose();
         }
 
