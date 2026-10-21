@@ -1,6 +1,8 @@
 using System;
 using UnityEngine;
+using VoxelRush.Core.Diagnostics;
 using VoxelRush.Core.Input;
+using VoxelRush.Core.Performance;
 using VoxelRush.Core.Race;
 using VoxelRush.Networking.Race;
 using VoxelRush.Networking.Vehicles;
@@ -46,6 +48,14 @@ namespace VoxelRush.Networking.Bots
 
         private void Awake()
         {
+            // Uncapped batchmode bots starve the server on a 2-core CI runner; run at the high-tier phone rate instead.
+            if (Application.isBatchMode && !Application.isEditor)
+            {
+                QualitySettings.vSyncCount = 0;
+                Application.targetFrameRate = QualityPresets.For(QualityTier.High).TargetFrameRate;
+                Debug.Log(LogEvent.Format("bot_frame_cap", ("targetFrameRate", Application.targetFrameRate)));
+            }
+
             string[] args = Environment.GetCommandLineArgs();
             _drive = Array.IndexOf(args, DriveArgument) >= 0;
             _race = Array.IndexOf(args, RaceArgument) >= 0;
