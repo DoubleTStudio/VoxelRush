@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using VoxelRush.Core.Race;
+using VoxelRush.Networking;
 using VoxelRush.Networking.Race;
 
 namespace VoxelRush.Presentation.UI
@@ -13,6 +14,7 @@ namespace VoxelRush.Presentation.UI
         private Text? _detail;
         private RacePhase? _phase;
         private float _phaseStartedAt;
+        private GUIStyle? _button;
 
         /// <summary>Defaults to the live network race client; tests inject a fake.</summary>
         public IRaceView? Source { get; set; }
@@ -41,6 +43,26 @@ namespace VoxelRush.Presentation.UI
             (string title, string detail) = view == null ? (string.Empty, string.Empty) : RaceHudModel.Describe(view, Time.unscaledTime - _phaseStartedAt);
             _title!.text = title;
             _detail!.text = detail;
+        }
+
+        // RACE-002: ready-up button while waiting for a race.
+        private void OnGUI()
+        {
+            RaceClient? race = Source == null ? RaceClient.Current : null;
+            if (race?.State?.State != RacePhase.Waiting || ClientBootstrap.Instance?.OnJoinScreen == true)
+            {
+                return;
+            }
+
+            float scale = Screen.height / 720f;
+            GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1f));
+            _button ??= new GUIStyle(GUI.skin.button) { fontSize = 30 };
+            string count = race.Lobby is RaceLobbyMessage lobby ? $"  {lobby.Ready}/{lobby.Racers}" : string.Empty;
+            float width = Screen.width / scale;
+            if (GUI.Button(new Rect(width / 2f - 150f, 200f, 300f, 70f), (race.WantsReady ? "Not ready" : "Ready to race") + count, _button))
+            {
+                race.SetReady(!race.WantsReady);
+            }
         }
 
         private Text CreateText(string name, Font font, int size, Vector2 offset, float height)

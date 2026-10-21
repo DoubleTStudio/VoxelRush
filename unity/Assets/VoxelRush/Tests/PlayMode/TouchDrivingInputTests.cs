@@ -91,6 +91,47 @@ namespace VoxelRush.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator CameraDrag_OffTheHudOrbits_ButSteeringFingerDoesNot()
+        {
+            var touchscreen = Add(InputSystem.AddDevice<Touchscreen>());
+            yield return LoadClientScene();
+            var camera = Camera.main!.GetComponent<VoxelRush.Presentation.World.ChaseCamera>();
+            var car = new GameObject("GestureCar");
+            try
+            {
+                camera.SetTarget(car.transform);
+
+                // A finger on the steer button sliding sideways must not turn the camera.
+                Vector2 steer = ScreenCenterOf("SteerLeft");
+                Touch(touchscreen, 1, TouchPhase.Began, steer);
+                yield return null;
+                yield return null;
+                Touch(touchscreen, 1, TouchPhase.Moved, steer + new Vector2(200f, 0f));
+                yield return null;
+                yield return null;
+                Assert.That(camera.YawOffset, Is.EqualTo(0f), "steering finger turned the camera");
+                Touch(touchscreen, 1, TouchPhase.Ended, steer + new Vector2(200f, 0f));
+                yield return null;
+
+                // A drag across empty sky orbits.
+                var sky = new Vector2(Screen.width * 0.5f, Screen.height * 0.55f);
+                Touch(touchscreen, 2, TouchPhase.Began, sky);
+                yield return null;
+                yield return null;
+                Touch(touchscreen, 2, TouchPhase.Moved, sky + new Vector2(Screen.width * 0.2f, 0f));
+                yield return null;
+                yield return null;
+                Assert.That(camera.YawOffset, Is.GreaterThan(20f), "drag off the HUD did not orbit");
+                Touch(touchscreen, 2, TouchPhase.Ended, sky + new Vector2(Screen.width * 0.2f, 0f));
+                yield return null;
+            }
+            finally
+            {
+                Object.Destroy(car);
+            }
+        }
+
+        [UnityTest]
         public IEnumerator Gamepad_SteerAndTriggerTogether_BothRegister()
         {
             var gamepad = Add(InputSystem.AddDevice<Gamepad>());

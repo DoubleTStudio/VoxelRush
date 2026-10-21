@@ -16,7 +16,7 @@ namespace VoxelRush.Networking
     /// Mobile endpoints arrive with join tickets (VR-080).
     /// </summary>
     [DisallowMultipleComponent]
-    public sealed class ClientBootstrap : MonoBehaviour
+    public sealed partial class ClientBootstrap : MonoBehaviour
     {
         public const int ExitCodeSuccess = 0;
         public const int ExitCodeInvalidArguments = 2;
@@ -40,10 +40,22 @@ namespace VoxelRush.Networking
         private bool _reconnecting;
         private string? _cacheRoot;
 
+        // MVP-001: players on a phone have no command line; a minimal join screen picks the server.
+        private const string LastServerKey = "voxelrush.lastServer";
+        private bool _joinScreen;
+        private bool _returnToJoin;
+        private string _address = string.Empty;
+        private string? _joinError;
+
+        private bool Interactive => _smokeTestSeconds == null && !Application.isBatchMode;
+
         // SAVE-008: players cache chunks under persistentDataPath; headless bots only when given a directory.
         public const string ChunkCacheArgument = "-chunkCache";
 
         public bool IsConnected => _network != null && _network.IsConnected;
+
+        /// <summary>The synced world while connected (rendered by the client scene).</summary>
+        public WorldSyncClient? World => _world;
 
         /// <summary>The scene's bootstrap (one per client/bot process).</summary>
         public static ClientBootstrap? Instance { get; private set; }
@@ -51,6 +63,19 @@ namespace VoxelRush.Networking
         public int Reconnects { get; private set; }
 
         private void Awake() => Instance = this;
+
+        // MVP-003: the predicting car collides with the same placed blocks as the server.
+        private void EnsureWorldColliders()
+        {
+            if (GetComponentInChildren<Gameplay.World.WorldColliders>() != null)
+            {
+                return;
+            }
+
+            var colliders = new GameObject(nameof(Gameplay.World.WorldColliders)).AddComponent<Gameplay.World.WorldColliders>();
+            colliders.transform.SetParent(transform, false);
+            colliders.Bind(() => _world?.Replica?.Info, c => _world?.Replica?.Get(c));
+        }
 
         private void Start()
         {
@@ -82,6 +107,12 @@ namespace VoxelRush.Networking
             if (endpoint == null)
             {
                 Debug.Log(LogEvent.Format("client_offline"));
+                if (!Application.isBatchMode)
+                {
+                    _address = PlayerPrefs.GetString(LastServerKey, string.Empty);
+                    _joinScreen = true;
+                }
+
                 return;
             }
 
@@ -90,6 +121,16 @@ namespace VoxelRush.Networking
 
         private void Update()
         {
+            if (_returnToJoin)
+            {
+                // Deferred out of the transport's disconnect callback.
+                _returnToJoin = false;
+                _network?.Dispose();
+                _network = null;
+                _world = null;
+                _joinScreen = true;
+            }
+
             _world?.Tick();
             if (_smokeTestSeconds is not int seconds)
             {
@@ -157,21 +198,37 @@ namespace VoxelRush.Networking
             // Give the server a moment to process the disconnect before the new handshake.
             yield return new WaitForSecondsRealtime(0.5f);
             Reconnects++;
-            Connect(endpoint);
+            if (_onlineWorldId != null)
+            {
+                // Tickets are single-use: ask the API for a new one.
+                yield return RejoinOnline();
+            }
+            else
+            {
+                Connect(endpoint);
+            }
+
             _reconnecting = false;
         }
 
-        private void Connect(ServerEndpoint endpoint)
+        private void Connect(ServerEndpoint endpoint, byte[]? ticket = null)
         {
             _endpoint = endpoint;
-            Debug.Log(LogEvent.Format("client_connecting", ("endpoint", endpoint)));
+            Debug.Log(LogEvent.Format("client_connecting", ("endpoint", endpoint), ("ticket", ticket != null)));
             try
             {
-                _network = ClientNetwork.Connect(endpoint);
+                _network = ClientNetwork.Connect(endpoint, ticket);
             }
             catch (SocketException e)
             {
                 Debug.LogError(LogEvent.Format("client_connect_failed", ("endpoint", endpoint), ("reason", "dns"), ("error", e.SocketErrorCode)));
+                if (Interactive)
+                {
+                    _joinError = $"Unknown host in {endpoint}.";
+                    _joinScreen = true;
+                    return;
+                }
+
                 Exit(ExitCodeConnectFailed);
                 return;
             }
@@ -179,6 +236,13 @@ namespace VoxelRush.Networking
             if (_network == null)
             {
                 Debug.LogError(LogEvent.Format("client_connect_failed", ("endpoint", endpoint), ("reason", "start_failed")));
+                if (Interactive)
+                {
+                    _joinError = "Could not start networking.";
+                    _joinScreen = true;
+                    return;
+                }
+
                 Exit(ExitCodeConnectFailed);
                 return;
             }
@@ -192,6 +256,7 @@ namespace VoxelRush.Networking
                 }
 
                 _world = new WorldSyncClient(Unity.Netcode.NetworkManager.Singleton, _cacheRoot);
+                EnsureWorldColliders();
                 RaceClient.Current = new RaceClient(Unity.Netcode.NetworkManager.Singleton);
                 BotBuilder.World = _world;
                 Debug.Log(LogEvent.Format("client_connected", ("endpoint", endpoint), ("seconds", _connectedAt - _startedAt)));
@@ -204,7 +269,64 @@ namespace VoxelRush.Networking
                 {
                     Exit(ExitCodeConnectFailed);
                 }
+                else if (Interactive && !_reconnecting)
+                {
+                    _joinError = _connectedAt < 0 ? $"Could not reach {endpoint}." : "Disconnected from the server.";
+                    _connectedAt = -1;
+                    _returnToJoin = true;
+                }
             };
+        }
+
+        private void OnGUI()
+        {
+            if (!_joinScreen || HideJoinPanels)
+            {
+                return;
+            }
+
+            // Laid out on a 720-px-tall virtual screen so it is readable on phones.
+            float scale = Screen.height / 720f;
+            GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1f));
+            float width = Screen.width / scale;
+            var big = new GUIStyle(GUI.skin.label) { fontSize = 36, alignment = TextAnchor.MiddleCenter };
+            var text = new GUIStyle(GUI.skin.textField) { fontSize = 28 };
+            var button = new GUIStyle(GUI.skin.button) { fontSize = 28 };
+            var small = new GUIStyle(GUI.skin.label) { fontSize = 22, alignment = TextAnchor.MiddleCenter, wordWrap = true };
+            GUILayout.BeginArea(new Rect(width / 2f - 580f, 120f, 560f, 440f), GUI.skin.box);
+            GUILayout.Label("VoxelRush", big, GUILayout.Height(60));
+            GUILayout.Label("Server address (host:port)", small);
+            _address = GUILayout.TextField(_address, 64, text, GUILayout.Height(56));
+            if (GUILayout.Button("Join", button, GUILayout.Height(64)))
+            {
+                if (ServerEndpoint.TryParse(_address.Trim(), out ServerEndpoint endpoint, out string error))
+                {
+                    PlayerPrefs.SetString(LastServerKey, _address.Trim());
+                    PlayerPrefs.Save();
+                    _joinError = null;
+                    _joinScreen = false;
+                    _onlineWorldId = null;
+                    Connect(endpoint);
+                }
+                else
+                {
+                    _joinError = error;
+                }
+            }
+
+            if (GUILayout.Button("Play offline", button, GUILayout.Height(56)))
+            {
+                _joinError = null;
+                _joinScreen = false;
+            }
+
+            if (_joinError != null)
+            {
+                GUILayout.Label(_joinError, small);
+            }
+
+            GUILayout.EndArea();
+            DrawOnline(width, text, button, small);
         }
 
         private ServerEndpoint? EditorEndpoint()
