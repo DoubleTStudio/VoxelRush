@@ -35,13 +35,13 @@ Phone players can see the checkpoints and where to go. The client already receiv
 - Reduced-particle setting: not in this task's scope.
 - No device run with people: the visuals, haptic feel and panel placement on notched phones are untested on hardware.
 
-## Verification (2026-10-21, macOS arm64)
+## Verification (2026-10-21, macOS arm64, after merging main with COSM-002)
 | Command | Result |
 |---|---|
-| `tools/test.sh domain` | Passed 528/528 (new `RaceGuideTests`, vibration cases in `LocalSettingsTests`) |
-| `tools/test.sh editmode` | Passed 624/624 (incl. `Client.unity` has exactly one `CheckpointView` and one `RaceDashboard`) |
-| `tools/test.sh playmode` | Passed 43/43. New `RaceGuidanceTests`: gate markers, sizes, brightness order, no colliders; dashboard speed, arrow, distance, clock, cues, wrong gate, teleport ignored; haptics toggle and rate limit; scene wiring with the scene material |
-| `tools/build.sh android --development` | Succeeded, APK 54.3 MB (development); `aapt dump permissions` lists `android.permission.VIBRATE` |
+| `tools/test.sh domain` | Passed 556/556 (new `RaceGuideTests`, vibration cases in `LocalSettingsTests`) |
+| `tools/test.sh editmode` | Passed 665/665 (incl. `Client.unity` has exactly one `CheckpointView` and one `RaceDashboard`) |
+| `tools/test.sh playmode` | Passed 54/54. New `RaceGuidanceTests`: gate markers, sizes, brightness order, no colliders; dashboard speed, arrow, distance, clock, cues, wrong gate, teleport ignored; haptics toggle and rate limit; scene wiring with the scene material |
+| `tools/build.sh android --development` | Succeeded, development APK 78.5 MiB (COSM-002 assets included); `aapt dump permissions` lists `android.permission.VIBRATE` |
 
 ## Risks / rollback
 - Client-only, apart from the `RaceClient` countdown reset (display state only, no messages).
