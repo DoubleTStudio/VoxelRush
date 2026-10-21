@@ -274,6 +274,15 @@ namespace VoxelRush.Tests.PlayMode
             Assert.That(Camera.main!.GetComponent<ChaseCamera>(), Is.Not.Null);
             Assert.That(UnityEngine.Object.FindAnyObjectByType<NetworkWorldView>(), Is.Not.Null);
             Assert.That(UnityEngine.Object.FindAnyObjectByType<VoxelRush.Presentation.Store.GarageMenu>(), Is.Not.Null);
+            Assert.That(UnityEngine.Object.FindAnyObjectByType<VoxelRush.Presentation.UI.GameMenu>(), Is.Not.Null);
+            var quality = VoxelRush.Presentation.Quality.QualityController.Instance;
+            Assert.That(quality, Is.Not.Null);
+            VoxelRush.Presentation.UI.GameMenu.Apply(new VoxelRush.Core.Settings.LocalSettings(VoxelRush.Core.Input.ControlSettings.Default, VoxelRush.Core.Performance.QualityTier.Low, 1f, 0.4f));
+            Assert.That(quality!.Tier, Is.EqualTo(VoxelRush.Core.Performance.QualityTier.Low), "a fixed graphics choice applies at once");
+            Assert.That(quality.Adaptive, Is.False);
+            Assert.That(AudioListener.volume, Is.EqualTo(0.4f).Within(1e-4f));
+            VoxelRush.Presentation.UI.GameMenu.Apply(VoxelRush.Core.Settings.LocalSettings.Default);
+            Assert.That(quality.Adaptive, Is.True, "Auto hands control back to adaptation");
             Assert.That(UnityEngine.Object.FindAnyObjectByType<VoxelRush.Presentation.Store.CarPaintView>(), Is.Not.Null);
             Assert.That(UnityEngine.Object.FindAnyObjectByType<VoxelRush.Presentation.Store.CarCosmeticsView>(), Is.Not.Null);
             yield return null;
