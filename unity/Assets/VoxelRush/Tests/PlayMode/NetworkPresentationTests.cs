@@ -79,6 +79,43 @@ namespace VoxelRush.Tests.PlayMode
             Assert.That(Vector3.Dot(camera.transform.position - car.position, Vector3.right), Is.LessThan(-5f), "camera swung behind the turned car");
         }
 
+        [Test]
+        public void ChaseCamera_OrbitAndZoomMoveTheView_ThenItRecentersBehindTheCar()
+        {
+            var car = Add<Transform>("Car");
+            var camera = Add<ChaseCamera>("Camera");
+            camera.SetTarget(car);
+            float distance = Vector3.Distance(camera.transform.position, car.position);
+
+            camera.Orbit(90f, 20f);
+            camera.Zoom(2f);
+            for (int i = 0; i < 60; i++)
+            {
+                camera.Follow(1f / 30f);
+            }
+
+            Vector3 offset = camera.transform.position - car.position;
+            Assert.That(Mathf.Abs(offset.x), Is.GreaterThan(Mathf.Abs(offset.z)), "orbit swung the camera to the car's side");
+            Assert.That(offset.magnitude, Is.LessThan(distance * 0.7f), "pinch out moved the camera closer");
+            Assert.That(camera.Elevation, Is.GreaterThan(30f));
+        }
+
+        [UnityTest]
+        public IEnumerator ChaseCamera_RecentersAfterTheGestureEnds()
+        {
+            var car = Add<Transform>("Car");
+            var camera = Add<ChaseCamera>("Camera");
+            camera.SetTarget(car);
+            camera.Orbit(120f, 0f);
+            yield return new WaitForSecondsRealtime(1.6f);
+            for (int i = 0; i < 120; i++)
+            {
+                camera.Follow(1f / 30f);
+            }
+
+            Assert.That(Mathf.Abs(camera.YawOffset), Is.LessThan(5f));
+        }
+
         [UnityTest]
         public IEnumerator ChaseCamera_FindsALocalCarOnItsOwn()
         {
