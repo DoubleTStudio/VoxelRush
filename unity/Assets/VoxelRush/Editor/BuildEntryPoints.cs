@@ -19,6 +19,8 @@ namespace VoxelRush.Editor
 
         private const string OutputArgument = "-buildOutput";
         private const string DevelopmentArgument = "-developmentBuild";
+        // Signed with the upload key (ADR-013); refuses to fall back to a debug key.
+        private const string ReleaseArgument = "-releaseBuild";
 
         public static void ConfigureProject()
         {
@@ -67,6 +69,15 @@ namespace VoxelRush.Editor
             string[] args = Environment.GetCommandLineArgs();
             string output = GetArgumentValue(args, OutputArgument) ?? defaultOutput;
             bool development = Array.IndexOf(args, DevelopmentArgument) >= 0;
+            ReleaseSettings release = ReleaseSettings.FromEnvironment(Environment.GetEnvironmentVariable);
+            release.RequireSigning = target == BuildTarget.Android && Array.IndexOf(args, ReleaseArgument) >= 0;
+            IReadOnlyList<string> releaseIssues = release.Validate();
+            if (releaseIssues.Count > 0)
+            {
+                Debug.LogError("Release settings invalid:\n" + string.Join("\n", releaseIssues));
+                ExitIfBatchMode(1);
+                return;
+            }
 
             var issues = ProjectConfiguration.Validate();
             if (issues.Count > 0)
@@ -104,9 +115,15 @@ namespace VoxelRush.Editor
                 options = development ? BuildOptions.Development : BuildOptions.None,
             };
 
-            BuildReport report = BuildPipeline.BuildPlayer(options);
+            BuildReport report;
+            using (release.Apply())
+            {
+                report = BuildPipeline.BuildPlayer(options);
+            }
+
             BuildSummary summary = report.summary;
-            Debug.Log($"Build {target}/{subtarget} {summary.result}: {summary.totalErrors} errors, {summary.totalSize} bytes, {summary.totalTime} -> {output}");
+            Debug.Log($"Build {target}/{subtarget} {summary.result}: {summary.totalErrors} errors, {summary.totalSize} bytes, {summary.totalTime} -> {output}" +
+                $" (version {release.Version ?? PlayerSettings.bundleVersion}, build {release.BuildNumber?.ToString() ?? "project"}, {(release.HasKeystore ? "upload key" : "debug key")})");
 
             ExitIfBatchMode(summary.result == BuildResult.Succeeded ? 0 : 1);
         }

@@ -1,0 +1,218 @@
+name: Release (internal testers)
+
+# VR-081 / ADR-013: signed builds to Firebase App Distribution. Every job checks its secrets first and skips with a
+# visible warning when they are missing, so this workflow is safe to keep before the accounts exist.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version name (e.g. 0.9.0)
+        required: true
+      groups:
+        description: Firebase tester groups (comma-separated)
+        default: internal
+      notes:
+        description: Release notes for testers
+        default: Internal build
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+jobs:
+  secrets:
+    name: Release secrets available
+    runs-on: ubuntu-24.04
+    outputs:
+      android: ${{ steps.check.outputs.android }}
+      ios: ${{ steps.check.outputs.ios }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - id: check
+        env:
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          FIREBASE_SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          FIREBASE_ANDROID_APP_ID: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
+          IOS_CERT: ${{ secrets.IOS_DIST_CERT_P12_BASE64 }}
+          IOS_PROFILE: ${{ secrets.IOS_ADHOC_PROFILE_BASE64 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          FIREBASE_IOS_APP_ID: ${{ secrets.FIREBASE_IOS_APP_ID }}
+          INPUT_VERSION: ${{ inputs.version }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          base=$([[ -n "$UNITY_EMAIL" && -n "$UNITY_PASSWORD" && -n "$FIREBASE_SA" ]] && echo true || echo false)
+          android=$([[ "$base" == true && -n "$ANDROID_KEYSTORE" && -n "$FIREBASE_ANDROID_APP_ID" ]] && echo true || echo false)
+          ios=$([[ "$base" == true && -n "$IOS_CERT" && -n "$IOS_PROFILE" && -n "$APPLE_TEAM_ID" && -n "$FIREBASE_IOS_APP_ID" ]] && echo true || echo false)
+          [[ "$android" == true ]] || echo "::warning::Android release skipped: needs UNITY_*, FIREBASE_SERVICE_ACCOUNT_JSON, ANDROID_KEYSTORE_* and FIREBASE_ANDROID_APP_ID (see docs/operations/RELEASE.md)."
+          [[ "$ios" == true ]] || echo "::warning::iOS release skipped: needs UNITY_*, FIREBASE_SERVICE_ACCOUNT_JSON, IOS_DIST_CERT_*, IOS_ADHOC_PROFILE_BASE64, APPLE_TEAM_ID and FIREBASE_IOS_APP_ID."
+          version="${INPUT_VERSION:-${REF_NAME#v}}"
+          [[ "$version" =~ ^[0-9]{1,4}\.[0-9]{1,4}(\.[0-9]{1,6})?$ ]] || { echo "::error::Version '$version' must look like 1.2.3"; exit 1; }
+          { echo "android=$android"; echo "ios=$ios"; echo "version=$version"; } >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Signed builds
+    needs: secrets
+    if: needs.secrets.outputs.android == 'true' || needs.secrets.outputs.ios == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    concurrency:
+      group: unity-personal-license
+      cancel-in-progress: false
+    env:
+      VOXELRUSH_VERSION: ${{ needs.secrets.outputs.version }}
+      # Monotonic across releases (Android versionCode / iOS build number).
+      VOXELRUSH_BUILD_NUMBER: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: true
+      - name: Map legacy Unity Hub path
+        run: sudo ln -sfn /usr/lib/unityhub /opt/unityhub
+      - uses: RageAgainstThePixel/unity-setup@3da1aae07f5635ff478d3ad7f29782b3aea88258 # v2.6.0
+        with:
+          version-file: unity/ProjectSettings/ProjectVersion.txt
+          build-targets: ${{ needs.secrets.outputs.ios == 'true' && 'Android, iOS' || 'Android' }}
+          hub-version: 3.22.3
+      - uses: RageAgainstThePixel/activate-unity-license@e73ff1f81db81a2595f86642123ce2b73b9a9258 # v2.2.2
+        with:
+          license: personal
+          username: ${{ secrets.UNITY_EMAIL }}
+          password: ${{ secrets.UNITY_PASSWORD }}
+      - name: Build signed Android APK
+        if: needs.secrets.outputs.android == 'true'
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          VOXELRUSH_ANDROID_KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASS }}
+          VOXELRUSH_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          VOXELRUSH_ANDROID_KEY_PASS: ${{ secrets.ANDROID_KEY_PASS }}
+        run: |
+          umask 077
+          export VOXELRUSH_ANDROID_KEYSTORE="$RUNNER_TEMP/upload.keystore"
+          base64 -d <<<"$KEYSTORE_B64" >"$VOXELRUSH_ANDROID_KEYSTORE"
+          tools/build.sh android --release
+          rm -f "$VOXELRUSH_ANDROID_KEYSTORE"
+          apksigner=$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -name apksigner | sort -V | tail -1)
+          "$apksigner" verify build/android/VoxelRush.apk
+      - name: Build iOS Xcode project
+        if: needs.secrets.outputs.ios == 'true'
+        run: tools/build.sh ios && tar -C build/ios -czf ios-xcode.tgz Xcode
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: needs.secrets.outputs.android == 'true'
+        with:
+          name: android-release-apk
+          path: build/android/VoxelRush.apk
+          retention-days: 30
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: needs.secrets.outputs.ios == 'true'
+        with:
+          name: ios-release-xcode
+          path: ios-xcode.tgz
+          retention-days: 1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: release-build-logs
+          path: artifacts/build-logs/
+
+  distribute-android:
+    name: Android to Firebase App Distribution
+    needs: [secrets, build]
+    if: needs.secrets.outputs.android == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: android-release-apk
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Upload to testers
+        env:
+          SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          APP_ID: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
+          TESTER_GROUPS: ${{ inputs.groups || 'internal' }}
+          NOTES: ${{ inputs.notes || github.ref_name }}
+        run: |
+          umask 077
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/firebase-sa.json"
+          printf '%s' "$SA_JSON" >"$GOOGLE_APPLICATION_CREDENTIALS"
+          npx --yes firebase-tools@15.32.1 appdistribution:distribute VoxelRush.apk --app "$APP_ID" --groups "$TESTER_GROUPS" --release-notes "$NOTES"
+          rm -f "$GOOGLE_APPLICATION_CREDENTIALS"
+
+  distribute-ios:
+    name: iOS (Ad Hoc) to Firebase App Distribution
+    needs: [secrets, build]
+    if: needs.secrets.outputs.ios == 'true'
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ios-release-xcode
+      - run: tar -xzf ios-xcode.tgz
+      - name: Import signing identity into a temporary keychain
+        env:
+          CERT_B64: ${{ secrets.IOS_DIST_CERT_P12_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
+          PROFILE_B64: ${{ secrets.IOS_ADHOC_PROFILE_BASE64 }}
+        run: |
+          umask 077
+          keychain="$RUNNER_TEMP/release.keychain-db"
+          keychain_password=$(openssl rand -hex 16)
+          base64 -d <<<"$CERT_B64" >"$RUNNER_TEMP/dist.p12"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 1800 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$RUNNER_TEMP/dist.p12" -P "$CERT_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -k "$keychain_password" "$keychain" >/dev/null
+          existing=$(security list-keychains -d user | tr -d '"' | xargs)
+          # shellcheck disable=SC2086 # keychain paths are split on purpose
+          security list-keychains -d user -s "$keychain" $existing
+          rm -f "$RUNNER_TEMP/dist.p12"
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          base64 -d <<<"$PROFILE_B64" >"$RUNNER_TEMP/adhoc.mobileprovision"
+          uuid=$(security cms -D -i "$RUNNER_TEMP/adhoc.mobileprovision" | plutil -extract UUID raw -)
+          cp "$RUNNER_TEMP/adhoc.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$uuid.mobileprovision"
+          echo "PROFILE_UUID=$uuid" >> "$GITHUB_ENV"
+      - name: Archive and export Ad Hoc IPA
+        env:
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          xcodebuild -project Xcode/Unity-iPhone.xcodeproj -scheme Unity-iPhone -configuration Release -sdk iphoneos \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/VoxelRush.xcarchive" archive \
+            CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_IDENTITY="Apple Distribution" PROVISIONING_PROFILE="$PROFILE_UUID"
+          cat >"$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>release-testing</string>
+            <key>teamID</key><string>${TEAM_ID}</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>provisioningProfiles</key><dict><key>com.doubletstudio.voxelrush</key><string>${PROFILE_UUID}</string></dict>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/VoxelRush.xcarchive" -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" -exportPath "$RUNNER_TEMP/ipa"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Upload to testers
+        env:
+          SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          APP_ID: ${{ secrets.FIREBASE_IOS_APP_ID }}
+          TESTER_GROUPS: ${{ inputs.groups || 'internal' }}
+          NOTES: ${{ inputs.notes || github.ref_name }}
+        run: |
+          umask 077
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/firebase-sa.json"
+          printf '%s' "$SA_JSON" >"$GOOGLE_APPLICATION_CREDENTIALS"
+          npx --yes firebase-tools@15.32.1 appdistribution:distribute "$(ls "$RUNNER_TEMP"/ipa/*.ipa)" --app "$APP_ID" --groups "$TESTER_GROUPS" --release-notes "$NOTES"
+          rm -f "$GOOGLE_APPLICATION_CREDENTIALS"
+      - name: Remove signing material
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/release.keychain-db" 2>/dev/null || true
+          rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/${PROFILE_UUID:-none}.mobileprovision"
