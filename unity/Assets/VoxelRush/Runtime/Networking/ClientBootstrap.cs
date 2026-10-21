@@ -280,7 +280,7 @@ namespace VoxelRush.Networking
 
         private void OnGUI()
         {
-            if (!_joinScreen)
+            if (!_joinScreen || HideJoinPanels)
             {
                 return;
             }

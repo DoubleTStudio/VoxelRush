@@ -170,6 +170,20 @@ namespace VoxelRush.Tests.PlayMode
             Assert.That(view.ChunkObjects[air].GetComponent<MeshFilter>().sharedMesh.vertexCount, Is.GreaterThan(0));
         }
 
+        [Test]
+        public void Garage_ItemStates_FollowLevelOwnershipAndStore()
+        {
+            var levelGated = new VoxelRush.Networking.Online.CatalogEntry { sku = "paint.ocean-blue", unlock = new VoxelRush.Networking.Online.CatalogUnlock { level = 2 } };
+            var storeOnly = new VoxelRush.Networking.Online.CatalogEntry { sku = "paint.chrome", unlock = new VoxelRush.Networking.Online.CatalogUnlock { store = true }, productId = "voxelrush.paint.chrome" };
+
+            Assert.That(VoxelRush.Presentation.Store.GarageMenu.StateOf(levelGated, 1, owned: false), Is.EqualTo("locked"));
+            Assert.That(VoxelRush.Presentation.Store.GarageMenu.StateOf(levelGated, 2, owned: false), Is.EqualTo("claim"));
+            Assert.That(VoxelRush.Presentation.Store.GarageMenu.StateOf(storeOnly, 99, owned: false), Is.EqualTo("buy"), "levels never unlock store items");
+            Assert.That(VoxelRush.Presentation.Store.GarageMenu.StateOf(storeOnly, 1, owned: true), Is.EqualTo("owned"));
+            Assert.That(VoxelRush.Presentation.Store.GarageMenu.PaintColor("paint.racing-red"), Is.Not.Null);
+            Assert.That(VoxelRush.Presentation.Store.GarageMenu.PaintColor("decal.lightning"), Is.Null);
+        }
+
         [UnityTest]
         public IEnumerator ClientScene_HasChaseCameraAndNetworkWorldView()
         {
@@ -177,6 +191,7 @@ namespace VoxelRush.Tests.PlayMode
             Assert.That(Camera.main, Is.Not.Null);
             Assert.That(Camera.main!.GetComponent<ChaseCamera>(), Is.Not.Null);
             Assert.That(UnityEngine.Object.FindAnyObjectByType<NetworkWorldView>(), Is.Not.Null);
+            Assert.That(UnityEngine.Object.FindAnyObjectByType<VoxelRush.Presentation.Store.GarageMenu>(), Is.Not.Null);
             var builder = UnityEngine.Object.FindAnyObjectByType<PhoneBuilder>();
             Assert.That(builder, Is.Not.Null);
             builder!.SetMode(PhoneBuilder.Mode.Place);
