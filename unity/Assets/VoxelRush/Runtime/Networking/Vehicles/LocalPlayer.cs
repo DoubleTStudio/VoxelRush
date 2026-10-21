@@ -1,4 +1,5 @@
 using System;
+using VoxelRush.Core.Cosmetics;
 using VoxelRush.Gameplay.Vehicles;
 
 namespace VoxelRush.Networking.Vehicles
@@ -6,28 +7,36 @@ namespace VoxelRush.Networking.Vehicles
     /// <summary>This process's own networked car, for presentation code that must not depend on Netcode types.</summary>
     public static class LocalPlayer
     {
-        private static string? s_equippedPaint;
+        private static readonly string?[] s_equipped = new string?[CosmeticCatalog.KindCount];
 
         public static ArcadeVehicle? Vehicle { get; internal set; }
 
-        /// <summary>The paint this player wants to show (null = default); the server decides what others see (COSM-001).</summary>
-        public static string? EquippedPaint
-        {
-            get => s_equippedPaint;
-            set
-            {
-                string? sku = string.IsNullOrEmpty(value) ? null : value;
-                if (sku == s_equippedPaint)
-                {
-                    return;
-                }
+        /// <summary>Raised with the slot whose equipped item changed, so a connected car resends it.</summary>
+        public static event Action<CosmeticKind>? EquippedChanged;
 
-                s_equippedPaint = sku;
-                EquippedPaintChanged?.Invoke();
+        /// <summary>The player pressed the horn; the own car sends it to the server (COSM-002).</summary>
+        public static event Action? HornPressed;
+
+        /// <summary>What this player wants to show in a slot (null = nothing); the server decides what others see (COSM-001, COSM-002).</summary>
+        public static string? Equipped(CosmeticKind kind) => CosmeticCatalog.IsValidKind(kind) ? s_equipped[(int)kind] : null;
+
+        public static void Equip(CosmeticKind kind, string? sku)
+        {
+            if (!CosmeticCatalog.IsValidKind(kind))
+            {
+                return;
             }
+
+            string? value = string.IsNullOrEmpty(sku) ? null : sku;
+            if (value == s_equipped[(int)kind])
+            {
+                return;
+            }
+
+            s_equipped[(int)kind] = value;
+            EquippedChanged?.Invoke(kind);
         }
 
-        /// <summary>Raised when <see cref="EquippedPaint"/> changes, so a connected car resends it.</summary>
-        public static event Action? EquippedPaintChanged;
+        public static void Honk() => HornPressed?.Invoke();
     }
 }

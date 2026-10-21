@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace VoxelRush.Presentation.Store
 {
-    /// <summary>Colours of the paint SKUs (<see cref="Core.Cosmetics.PaintCatalog"/>) and how a car body is tinted.</summary>
+    /// <summary>Colours of the paint SKUs (<see cref="Core.Cosmetics.CosmeticCatalog"/>) and how a car body is tinted.</summary>
     public static class PaintPalette
     {
         private static readonly Dictionary<string, Color> Paints = new Dictionary<string, Color>

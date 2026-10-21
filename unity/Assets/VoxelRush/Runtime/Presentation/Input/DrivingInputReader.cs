@@ -15,6 +15,7 @@ namespace VoxelRush.Presentation.Input
         private InputAction _boost = null!;
         private InputAction _handbrake = null!;
         private InputAction _buildMode = null!;
+        private InputAction _horn = null!;
         private InputAction _look = null!;
         private SteeringFilter _steering = ControlSettings.Default.CreateSteeringFilter();
 
@@ -26,6 +27,8 @@ namespace VoxelRush.Presentation.Input
         public Vector2 Look { get; private set; }
 
         public bool BuildModePressedThisFrame { get; private set; }
+
+        public bool HornPressedThisFrame { get; private set; }
 
         public DrivingInput ReadDrivingInput() => Current;
 
@@ -44,6 +47,7 @@ namespace VoxelRush.Presentation.Input
             _boost = _map.FindAction(DrivingControls.Boost, true);
             _handbrake = _map.FindAction(DrivingControls.Handbrake, true);
             _buildMode = _map.FindAction(DrivingControls.BuildMode, true);
+            _horn = _map.FindAction(DrivingControls.Horn, true);
             _look = _map.FindAction(DrivingControls.Look, true);
         }
 
@@ -71,6 +75,7 @@ namespace VoxelRush.Presentation.Input
                 buttons);
             Look = _look.ReadValue<Vector2>();
             BuildModePressedThisFrame = _buildMode.WasPressedThisFrame();
+            HornPressedThisFrame = _horn.WasPressedThisFrame();
         }
     }
 }

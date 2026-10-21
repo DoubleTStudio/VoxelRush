@@ -79,21 +79,28 @@ namespace VoxelRush.Networking.Vehicles
     }
 
     /// <summary>
-    /// Owner → server paint request (COSM-001). Hand-written rather than a FixedString: NGO reads a FixedString's
-    /// length unchecked in release players, so untrusted lengths are bounded here before anything is copied.
+    /// Owner → server loadout request (COSM-001, COSM-002): one slot byte, then the SKU. Hand-written rather than a
+    /// FixedString: NGO reads a FixedString's length unchecked in release players, so untrusted lengths are bounded
+    /// here before anything is copied.
     /// </summary>
-    public struct PaintRequest : INetworkSerializable
+    public struct LoadoutRequest : INetworkSerializable
     {
         /// <summary>Stands in for an over-long request: not a well-formed SKU, so the server refuses it as malformed.</summary>
         public const string TooLong = "?";
+
+        /// <summary>Raw slot; an out-of-range kind is refused as malformed by the server.</summary>
+        public Core.Cosmetics.CosmeticKind Kind;
 
         public string Sku;
 
         public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
         {
+            byte kind = (byte)Kind;
+            serializer.SerializeValue(ref kind);
+            Kind = (Core.Cosmetics.CosmeticKind)kind;
             byte length = (byte)(serializer.IsWriter ? Mathf.Min(Sku?.Length ?? 0, byte.MaxValue) : 0);
             serializer.SerializeValue(ref length);
-            if (serializer.IsReader && length > Core.Cosmetics.PaintCatalog.MaxSkuLength)
+            if (serializer.IsReader && length > Core.Cosmetics.CosmeticCatalog.MaxSkuLength)
             {
                 // Over the contract: never read.
                 Sku = TooLong;

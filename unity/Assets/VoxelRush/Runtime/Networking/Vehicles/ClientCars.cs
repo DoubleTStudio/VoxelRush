@@ -22,9 +22,7 @@ namespace VoxelRush.Networking.Vehicles
         public bool IsLocal { get; }
 
         /// <summary>Own car: the predicted boost; remote: the last snapshot's flag.</summary>
-        public bool IsBoosting => IsLocal && Vehicle != null ? Vehicle.IsBoosting : RemoteBoosting;
-
-        internal bool RemoteBoosting { get; set; }
+        public bool IsBoosting => IsLocal && Vehicle != null ? Vehicle.IsBoosting : CarCosmetics.IsRemoteBoosting(Transform);
     }
 
     /// <summary>Every car this client shows (AUDIO-001 engine sounds); never filled on the server.</summary>

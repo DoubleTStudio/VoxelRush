@@ -316,7 +316,8 @@ namespace VoxelRush.Networking.Vehicles
             if (_role == Role.Remote)
             {
                 _interpolator!.Add(snapshot.ServerTick * (double)NetworkSimulation.Instance.TickSeconds, snapshot.Position, snapshot.Rotation, now);
-                _shown!.RemoteBoosting = snapshot.Boosting;
+                // COSM-002: spark trails show a remote boost; AUDIO-001 engines read the same flag.
+                CarCosmetics.SetRemoteBoosting(transform, snapshot.Boosting);
             }
             else if (_role == Role.Owner)
             {
