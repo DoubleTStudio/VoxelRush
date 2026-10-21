@@ -49,6 +49,7 @@ tools/smoke-join.sh docker  # server image + 2 Linux bots on one Docker network;
 tools/smoke-join.sh native  # same with the macOS server + bot builds
 tools/build.sh bot-mac --development && tools/smoke-drive.sh native   # 2 predicted cars at 100 ms RTT + speed hack (docker mode on x86-64)
 tools/load-test.sh native 8 40   # server + 8 driving bots; tick metrics -> artifacts/load/summary.json (baseline: docs/perf/)
+tools/dev-online.sh up|down|status   # macOS: PostgreSQL + API + host agent with native per-world servers, for phones on LAN/Tailscale
 ```
 Unity must not already have the project open when running batch-mode commands.
 On Apple Silicon the Linux (amd64 Mono) server aborts under Docker's Rosetta emulation; use the `server-mac` build locally. See ADR-012.

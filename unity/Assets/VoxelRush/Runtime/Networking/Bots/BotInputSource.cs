@@ -18,11 +18,14 @@ namespace VoxelRush.Networking.Bots
         public const string DriveArgument = "-botDrive";
         public const string RaceArgument = "-botRace";
         public const string ReconnectArgument = "-botReconnectAfterGate";
+        // RACE-002: ready up once this many racers are connected (no server auto-start).
+        public const string ReadyArgument = "-botReady";
 
         private float _phase;
         private bool _drive;
         private bool _race;
         private int _reconnectAfter = -1;
+        private int _readyAt = -1;
         private float? _lane;
 
         public DrivingInput ReadDrivingInput()
@@ -52,6 +55,12 @@ namespace VoxelRush.Networking.Bots
                 _reconnectAfter = gate;
             }
 
+            int ready = Array.IndexOf(args, ReadyArgument);
+            if (ready >= 0 && ready + 1 < args.Length && int.TryParse(args[ready + 1], out int racers))
+            {
+                _readyAt = racers;
+            }
+
             // Different bots weave out of phase so they spread over the arena (process ids repeat across containers).
             _phase = (Guid.NewGuid().GetHashCode() & 0x7fffffff) % 7 * 0.9f;
         }
@@ -59,6 +68,11 @@ namespace VoxelRush.Networking.Bots
         private void Update()
         {
             RaceClient? race = RaceClient.Current;
+            if (_readyAt > 0 && race?.State?.State == RacePhase.Waiting && !race.WantsReady && race.Lobby is RaceLobbyMessage lobby && lobby.Racers >= _readyAt)
+            {
+                race.SetReady(true);
+            }
+
             if (_reconnectAfter > 0 && race?.Progress is RaceProgressMessage progress && progress.Crossings >= _reconnectAfter
                 && ClientBootstrap.Instance is ClientBootstrap bootstrap && bootstrap.Reconnects == 0)
             {

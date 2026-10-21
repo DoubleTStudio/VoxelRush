@@ -26,6 +26,8 @@ namespace VoxelRush.Networking.Race
         private readonly HashSet<ulong> _respawned = new HashSet<ulong>();
         private readonly byte[] _trackPayload;
         private RacePhase _phase;
+        private readonly RaceLobby _lobby = new RaceLobby();
+        private readonly List<string> _connectedRacers = new List<string>();
         private readonly Action<IReadOnlyList<RewardGrant>>? _rewards;
 
         /// <param name="rewards">Receives XP grants for server-validated results (ticketed servers only: racer keys are player ids).</param>
@@ -38,6 +40,7 @@ namespace VoxelRush.Networking.Race
             Race = new RaceAuthority(track);
             _trackPayload = TrackMessage.Encode(track);
             _phase = Race.Phase;
+            manager.CustomMessagingManager.RegisterNamedMessageHandler(RaceMessages.Ready, OnReady);
         }
 
         public RaceAuthority Race { get; }
@@ -69,6 +72,7 @@ namespace VoxelRush.Networking.Race
             WorldMessages.Send(_manager, RaceMessages.Track, clientId, _trackPayload, NetworkDelivery.ReliableSequenced);
             WorldMessages.Send(_manager, RaceMessages.State, clientId, Race.ToMessage().Encode(), NetworkDelivery.ReliableSequenced);
             SendProgress(clientId, key, CrossingOutcome.None);
+            WorldMessages.Send(_manager, RaceMessages.Lobby, clientId, LobbyMessage().Encode(), NetworkDelivery.ReliableSequenced);
             return pose;
         }
 
@@ -77,6 +81,8 @@ namespace VoxelRush.Networking.Race
             if (_keys.Remove(clientId, out string? key))
             {
                 Race.Disconnect(key, tick);
+                _lobby.Remove(key);
+                BroadcastLobby();
                 if (Race.IsRacer(key))
                 {
                     Debug.Log(LogEvent.Format("race_racer_away", ("racer", _names[key]), ("crossings", Race.CrossingsOf(key))));
@@ -89,10 +95,13 @@ namespace VoxelRush.Networking.Race
 
         public void Tick(uint tick)
         {
-            if (Race.Phase == RacePhase.Waiting && _autoStart is int needed && Race.RacerCount >= needed && Race.StartCountdown(tick))
+            bool autoStart = _autoStart is int needed && Race.RacerCount >= needed;
+            if (Race.Phase == RacePhase.Waiting && (autoStart || _lobby.ShouldStart(ConnectedRacers())) && Race.StartCountdown(tick))
             {
-                Debug.Log(LogEvent.Format("race_countdown", ("raceId", Race.RaceId), ("racers", Race.RacerCount), ("startTick", Race.StartTick)));
+                Debug.Log(LogEvent.Format("race_countdown", ("raceId", Race.RaceId), ("racers", Race.RacerCount), ("startTick", Race.StartTick), ("readyUp", !autoStart)));
                 PlaceOnGrid();
+                _lobby.Clear();
+                BroadcastLobby();
             }
 
             foreach (KeyValuePair<ulong, string> entry in _keys)
@@ -112,6 +121,60 @@ namespace VoxelRush.Networking.Race
                 }
             }
         }
+
+        // RACE-002: a player toggles ready while waiting; a spectator who readies joins this round.
+        private void OnReady(ulong sender, FastBufferReader reader)
+        {
+            if (!WorldMessages.TryRead(reader, out byte[] payload) || payload.Length != 1 || payload[0] > 1
+                || Race.Phase != RacePhase.Waiting || !_keys.TryGetValue(sender, out string? key))
+            {
+                return;
+            }
+
+            bool ready = payload[0] == 1;
+            if (ready && !Race.IsRacer(key) && Race.AddRacer(key))
+            {
+                Debug.Log(LogEvent.Format("race_joined", ("racer", _names[key]), ("clientId", sender), ("racers", Race.RacerCount)));
+            }
+
+            if (Race.IsRacer(key) && _lobby.SetReady(key, ready))
+            {
+                Debug.Log(LogEvent.Format("race_ready", ("racer", _names[key]), ("ready", ready), ("readyCount", _lobby.ReadyCount)));
+                BroadcastLobby();
+            }
+        }
+
+        private List<string> ConnectedRacers()
+        {
+            _connectedRacers.Clear();
+            foreach (string key in _keys.Values)
+            {
+                if (Race.IsRacer(key) && Race.IsConnected(key))
+                {
+                    _connectedRacers.Add(key);
+                }
+            }
+
+            return _connectedRacers;
+        }
+
+        private RaceLobbyMessage LobbyMessage()
+        {
+            int ready = 0;
+            List<string> racers = ConnectedRacers();
+            foreach (string key in racers)
+            {
+                if (_lobby.IsReady(key))
+                {
+                    ready++;
+                }
+            }
+
+            return new RaceLobbyMessage(ready, racers.Count);
+        }
+
+        private void BroadcastLobby() =>
+            WorldMessages.SendToAll(_manager, RaceMessages.Lobby, LobbyMessage().Encode(), NetworkDelivery.ReliableSequenced);
 
         // Countdown: every racer back on the start grid (cars may be anywhere after free roam or the last race).
         private void PlaceOnGrid()
@@ -190,5 +253,8 @@ namespace VoxelRush.Networking.Race
         public const string State = "vr/race-state";
         public const string Progress = "vr/race-progress";
         public const string Results = "vr/race-results";
+        // RACE-002: client → server ready toggle; server → clients ready count.
+        public const string Ready = "vr/race-ready";
+        public const string Lobby = "vr/race-lobby";
     }
 }

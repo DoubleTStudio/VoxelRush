@@ -53,7 +53,10 @@ jobs:
         with:
           global-json-file: global.json
       - run: dotnet test backend/VoxelRush.Api.Tests --logger "trx;LogFileName=api.trx" --results-directory artifacts/test-results
+      # ALLOC-001: host agent against a fake container runtime (no Docker needed).
+      - run: dotnet test backend/VoxelRush.HostAgent.Tests --logger "trx;LogFileName=host-agent.trx" --results-directory artifacts/test-results
       - run: tools/build-api.sh
+      - run: tools/build-host-agent.sh
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -75,7 +78,7 @@ jobs:
           EVENT: ${{ github.event_name }}
           BASE: ${{ github.event.pull_request.base.sha }}
         run: |
-          if [[ "$EVENT" != pull_request ]] || git diff --name-only "$BASE"...HEAD | grep -qvE '^(backend/|docs/|tasks/|docker/api/)|\.md$'; then
+          if [[ "$EVENT" != pull_request ]] || git diff --name-only "$BASE"...HEAD | grep -qvE '^(backend/|docs/|tasks/|docker/api/|docker/host-agent/|docker/compose\.dev\.yaml$|tools/dev-online\.sh$)|\.md$'; then
             echo "unity=true" >> "$GITHUB_OUTPUT"
           else
             echo "unity=false" >> "$GITHUB_OUTPUT"
