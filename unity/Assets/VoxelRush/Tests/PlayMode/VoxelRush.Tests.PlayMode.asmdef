@@ -1,14 +1,27 @@
 {
     "name": "VoxelRush.Tests.PlayMode",
     "rootNamespace": "VoxelRush.Tests.PlayMode",
-    "references": ["VoxelRush.Core", "VoxelRush.Presentation", "Unity.RenderPipelines.Universal.Runtime", "UnityEngine.TestRunner", "UnityEditor.TestRunner"],
+    "references": [
+        "VoxelRush.Core",
+        "VoxelRush.Presentation",
+        "Unity.RenderPipelines.Universal.Runtime",
+        "Unity.InputSystem",
+        "UnityEngine.UI",
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": true,
-    "precompiledReferences": ["nunit.framework.dll"],
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
     "autoReferenced": false,
-    "defineConstraints": ["UNITY_INCLUDE_TESTS", "!UNITY_SERVER"],
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS",
+        "!UNITY_SERVER"
+    ],
     "versionDefines": [],
     "noEngineReferences": false
 }

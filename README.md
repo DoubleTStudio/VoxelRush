@@ -53,6 +53,10 @@ On Apple Silicon the Linux (amd64 Mono) server aborts under Docker's Rosetta emu
 
 Platform settings are code: edit `unity/Assets/VoxelRush/Editor/ProjectConfiguration.cs`, then run **VoxelRush > Apply Project Configuration** (or `tools/unity.sh -quit -executeMethod VoxelRush.Editor.BuildEntryPoints.ConfigureProject`) and commit `ProjectSettings/`. An EditMode test fails on drift.
 
+## Controls
+Landscape touch HUD (`Client.unity` → `TouchHud`): ◀ ▶ steer bottom-left; GAS, BRAKE, BOOST, DRIFT (handbrake) bottom-right; BUILD top centre; all inside the device safe area.
+The `Driving` action map is defined in code (`Presentation/Input/DrivingControls.cs`); touch buttons emulate a virtual gamepad, so touch, gamepad (stick/triggers/face buttons) and keyboard (WASD/arrows, Shift boost, Space drift, B build) share one map.
+
 ## Dedicated server
 ```
 VoxelRushServer.x86_64 -batchmode -nographics -logFile - [-port 7777] [-maxPlayers 1..8] [-smokeTestTicks N]
