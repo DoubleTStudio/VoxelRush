@@ -23,6 +23,14 @@ namespace VoxelRush.Networking
         private bool _onlineBusy;
         private Vector2 _worldScroll;
 
+        public bool OnJoinScreen => _joinScreen;
+
+        /// <summary>Set by an overlay (the garage) so the join panels neither draw nor take clicks under it.</summary>
+        public bool HideJoinPanels { get; set; }
+
+        /// <summary>The signed-in API client, for the garage and store (null until signed in).</summary>
+        public PlayerApi? SignedInApi => _api != null && _api.SignedIn ? _api : null;
+
         /// <summary>The online client for tests and tools; created on first use from the entered API URL.</summary>
         public PlayerApi Api(string apiUrl)
         {
