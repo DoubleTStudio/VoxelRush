@@ -4,6 +4,8 @@
     "references": [
         "VoxelRush.Core",
         "VoxelRush.Gameplay",
+        "VoxelRush.Networking",
+        "Unity.Netcode.Runtime",
         "VoxelRush.Server",
         "VoxelRush.Editor",
         "Unity.RenderPipelines.Universal.Runtime",

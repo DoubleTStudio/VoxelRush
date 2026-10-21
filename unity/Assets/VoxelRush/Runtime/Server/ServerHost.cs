@@ -5,6 +5,7 @@ using VoxelRush.Core.Diagnostics;
 using VoxelRush.Core.Hosting;
 using VoxelRush.Core.Networking;
 using VoxelRush.Networking;
+using VoxelRush.Networking.Vehicles;
 
 namespace VoxelRush.Server
 {
@@ -17,6 +18,7 @@ namespace VoxelRush.Server
         public const int ExitCodeStartupFailure = 3;
 
         private ServerNetwork? _network;
+        private VehicleSpawner? _vehicles;
 
         public ServerLaunchOptions? Options { get; private set; }
 
@@ -71,10 +73,17 @@ namespace VoxelRush.Server
                 return;
             }
 
+            _vehicles = new VehicleSpawner();
             _network.ClientConnected += (clientId, players) =>
+            {
                 Debug.Log(LogEvent.Format("client_connected", ("clientId", clientId), ("players", players), ("maxPlayers", Options.MaxPlayers)));
+                _vehicles.Spawn(clientId);
+            };
             _network.ClientDisconnected += (clientId, players) =>
+            {
                 Debug.Log(LogEvent.Format("client_disconnected", ("clientId", clientId), ("players", players)));
+                _vehicles.Despawn(clientId);
+            };
             _network.ClientRejected += (clientId, rejection) =>
                 Debug.LogWarning(LogEvent.Format("client_rejected", ("clientId", clientId), ("reason", rejection.ToReasonCode())));
             _network.PendingClientExpired += clientId =>

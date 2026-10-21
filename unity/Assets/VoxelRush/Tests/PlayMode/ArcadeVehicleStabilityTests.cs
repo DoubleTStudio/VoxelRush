@@ -85,6 +85,57 @@ namespace VoxelRush.Tests.PlayMode
             Assert.That(probe.SawNaN, Is.False);
         }
 
+        /// <summary>Prediction relies on this: restore a captured state, replay the same inputs, reach the same place.</summary>
+        [UnityTest]
+        public IEnumerator CaptureRestoreReplay_ReproducesTrajectory()
+        {
+            ConfigureTime(1f / 30f);
+            var (car, _) = FindCar();
+            yield return Seconds(2f);
+
+            SimulationMode previousMode = Physics.simulationMode;
+            Physics.simulationMode = SimulationMode.Script;
+            try
+            {
+                car.AutoSimulate = false;
+                const float dt = 1f / 30f;
+                var inputs = new DrivingInput[45];
+                for (int i = 0; i < inputs.Length; i++)
+                {
+                    inputs[i] = new DrivingInput(Mathf.Sin(i * 0.2f), 1f, 0f, i > 30 ? DrivingButtons.Handbrake : DrivingButtons.None);
+                }
+
+                VehicleState start = car.CaptureState();
+                VehicleState first = Run(car, inputs, dt);
+                Assert.That(Vector3.Distance(first.Position, start.Position), Is.GreaterThan(3f), "car didn't move");
+
+                Assert.That(car.RestoreState(start), Is.True);
+                VehicleState second = Run(car, inputs, dt);
+
+                Assert.That(Vector3.Distance(first.Position, second.Position), Is.LessThan(0.01f), "replay diverged in position");
+                Assert.That(Quaternion.Angle(first.Rotation, second.Rotation), Is.LessThan(0.5f), "replay diverged in rotation");
+                Assert.That((first.LinearVelocity - second.LinearVelocity).magnitude, Is.LessThan(0.01f), "replay diverged in velocity");
+                Assert.That(car.RestoreState(new VehicleState(new Vector3(float.NaN, 0, 0), Quaternion.identity, Vector3.zero, Vector3.zero, default)), Is.False, "NaN state must be refused");
+            }
+            finally
+            {
+                car.AutoSimulate = true;
+                Physics.simulationMode = previousMode;
+            }
+        }
+
+        private static VehicleState Run(ArcadeVehicle car, DrivingInput[] inputs, float dt)
+        {
+            foreach (DrivingInput input in inputs)
+            {
+                car.SetInput(input);
+                car.Simulate(dt);
+                Physics.Simulate(dt);
+            }
+
+            return car.CaptureState();
+        }
+
         private static IEnumerator DriveTrack(float fixedStep)
         {
             ConfigureTime(fixedStep);

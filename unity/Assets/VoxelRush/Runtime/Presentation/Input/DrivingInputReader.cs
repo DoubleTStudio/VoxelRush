@@ -6,7 +6,7 @@ namespace VoxelRush.Presentation.Input
 {
     /// <summary>Samples the Driving action map once per frame into a <see cref="DrivingInput"/>; steering is ramped for digital buttons.</summary>
     [DisallowMultipleComponent]
-    public sealed class DrivingInputReader : MonoBehaviour
+    public sealed class DrivingInputReader : MonoBehaviour, IDrivingInputSource
     {
         private InputActionMap? _map;
         private InputAction _steer = null!;
@@ -26,6 +26,8 @@ namespace VoxelRush.Presentation.Input
         public Vector2 Look { get; private set; }
 
         public bool BuildModePressedThisFrame { get; private set; }
+
+        public DrivingInput ReadDrivingInput() => Current;
 
         public void Apply(ControlSettings settings)
         {

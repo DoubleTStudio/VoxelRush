@@ -47,6 +47,7 @@ tools/smoke-server.sh       # run the Linux server build in an amd64 Ubuntu cont
 SMOKE_NATIVE=1 tools/smoke-server.sh build/server-mac   # same checks against the macOS build
 tools/smoke-join.sh docker  # server image + 2 Linux bots on one Docker network; server-full rejection (x86-64 hosts)
 tools/smoke-join.sh native  # same with the macOS server + bot builds
+tools/build.sh bot-mac --development && tools/smoke-drive.sh native   # 2 predicted cars at 100 ms RTT + speed hack (docker mode on x86-64)
 ```
 Unity must not already have the project open when running batch-mode commands.
 On Apple Silicon the Linux (amd64 Mono) server aborts under Docker's Rosetta emulation; use the `server-mac` build locally. See ADR-012.
@@ -69,6 +70,10 @@ Docker (UDP 7777, non-root, read-only install dir):
 tools/build.sh server
 docker compose -f docker/compose.yaml up --build
 ```
+
+## Networked driving
+The server spawns one car per player on the shared `Arena`; physics ticks at 30 Hz. Owners predict and reconcile; other cars are interpolated (`docs/adr/ADR-015-authoritative-vehicle-netcode.md`).
+Development builds accept `-simRttMs N [-simJitterMs J] [-simLossPercent L]` to simulate network conditions for gameplay messages. Bots accept `-botDrive` (scripted driving) and `-botCheat` (sends speed-hack inputs the server must reject).
 
 ## Test client and bots
 Clients connect with `-connect host:port [-smokeTestSeconds N]` (exit `0` stayed connected, `3` connect failed or rejected).

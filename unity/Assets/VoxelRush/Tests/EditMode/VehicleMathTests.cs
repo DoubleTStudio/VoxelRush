@@ -170,6 +170,33 @@ namespace VoxelRush.Tests.EditMode
         }
 
         [Test]
+        public void Boost_CaptureRestore_ContinuesIdentically()
+        {
+            var original = new BoostSystem(3f, 0.5f, 1f);
+            original.Step(true, 0.5f);
+            original.Step(false, 0.2f);
+            BoostState saved = original.Capture();
+
+            var copy = new BoostSystem(3f, 0.5f, 1f);
+            copy.Restore(saved);
+            foreach (bool held in new[] { false, false, true, true, false })
+            {
+                Assert.That(copy.Step(held, 0.25f), Is.EqualTo(original.Step(held, 0.25f)));
+            }
+
+            Assert.That(copy.Energy, Is.EqualTo(original.Energy));
+        }
+
+        [Test]
+        public void Boost_Restore_ClampsHostileState()
+        {
+            var boost = new BoostSystem(3f, 0.5f, 1f);
+            boost.Restore(new BoostState(99f, -5f, true));
+
+            Assert.That(boost.Energy, Is.EqualTo(3f));
+        }
+
+        [Test]
         public void FlipRecovery_ResetsOnlyAfterSustainedFlip()
         {
             var recovery = new FlipRecovery(resetSeconds: 2f);

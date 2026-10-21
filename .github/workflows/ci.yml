@@ -108,11 +108,15 @@ jobs:
       - name: Server smoke test
         run: tools/smoke-server.sh build/server
 
-      # VR-002 DoD: server image + two headless Linux bots join; with -maxPlayers 1 the second is refused.
+      # Development build: latency simulation and cheat mode are dev-only.
       - name: Build Linux headless bot
-        run: tools/build.sh bot-linux
+        run: tools/build.sh bot-linux --development
+      # VR-002 DoD: server image + two headless Linux bots join; with -maxPlayers 1 the second is refused.
       - name: Join test (Docker server image + 2 bots)
         run: tools/smoke-join.sh docker
+      # VR-012 DoD: two predicted cars at 100 ms RTT on the authoritative server; a speed hack is rejected.
+      - name: Drive test (2 predicted cars, 100 ms RTT, speed hack)
+        run: tools/smoke-drive.sh docker
 
       - name: Build Android APK
         run: tools/build.sh android
@@ -133,6 +137,7 @@ jobs:
             artifacts/test-results/
             artifacts/build-logs/
             artifacts/smoke-join/
+            artifacts/smoke-drive/
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: server-linux64
