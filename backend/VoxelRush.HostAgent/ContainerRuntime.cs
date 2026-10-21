@@ -29,6 +29,9 @@ public interface IContainerRuntime
     Task<bool> HasLoggedAsync(string name, string marker, CancellationToken ct);
 
     Task RemoveAsync(string name, CancellationToken ct);
+
+    /// <summary>The -port and -worldDir the server itself gets; containers map the host port to 7777 and mount the volume on /data.</summary>
+    (int Port, string WorldDir) ServerBinding(int hostPort, string volume) => (DockerCli.ContainerPort, "/data");
 }
 
 /// <summary>Docker CLI against the mounted socket. Labels carry world, port and start time so state survives agent restarts.</summary>

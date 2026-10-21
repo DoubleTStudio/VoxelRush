@@ -15,7 +15,21 @@ builder.WebHost.ConfigureKestrel(k =>
 });
 builder.Services.AddSingleton(options);
 builder.Services.AddSingleton(TimeProvider.System);
-builder.Services.AddSingleton<IContainerRuntime, DockerCli>();
+if (options.Runtime == HostAgentOptions.ProcessRuntime)
+{
+    if (!File.Exists(options.ServerExecutable))
+    {
+        throw new InvalidOperationException("HostAgent:ServerExecutable does not exist: " + options.ServerExecutable);
+    }
+
+    // Disposed with the host, which stops the servers it started.
+    builder.Services.AddSingleton<IProcessLauncher, OsProcessLauncher>();
+    builder.Services.AddSingleton<IContainerRuntime, ProcessRuntime>();
+}
+else
+{
+    builder.Services.AddSingleton<IContainerRuntime, DockerCli>();
+}
 builder.Services.AddSingleton<WorldHosts>();
 builder.Services.ConfigureHttpJsonOptions(json => json.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull);
 

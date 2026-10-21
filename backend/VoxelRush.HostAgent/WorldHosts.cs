@@ -116,28 +116,33 @@ public sealed class WorldHosts(IContainerRuntime docker, HostAgentOptions option
         return Starting();
     }
 
-    private ContainerSpec Spec(Guid world, string name, int port) => new(
-        name,
-        options.ServerImage,
-        world,
-        port,
-        options.VolumePrefix + world.ToString("N"),
-        string.IsNullOrEmpty(options.Network) ? null : options.Network,
-        // Names match the server's TicketKeyEnvironment / RewardClient environment variables.
-        new Dictionary<string, string>
-        {
-            ["VOXELRUSH_TICKET_KEY"] = options.TicketKey,
-            ["VOXELRUSH_API_URL"] = options.ApiUrl,
-            ["VOXELRUSH_SERVICE_TOKEN"] = options.ServiceToken,
-        },
-        [
-            "-port", DockerCli.ContainerPort.ToString(CultureInfo.InvariantCulture),
-            "-maxPlayers", options.MaxPlayers.ToString(CultureInfo.InvariantCulture),
-            "-worldDir", "/data",
-            "-worldId", world.ToString(),
-            "-idleShutdownSeconds", options.IdleShutdownSeconds.ToString(CultureInfo.InvariantCulture),
-        ],
-        clock.GetUtcNow());
+    private ContainerSpec Spec(Guid world, string name, int port)
+    {
+        string volume = options.VolumePrefix + world.ToString("N");
+        (int serverPort, string worldDir) = docker.ServerBinding(port, volume);
+        return new(
+            name,
+            options.ServerImage,
+            world,
+            port,
+            volume,
+            string.IsNullOrEmpty(options.Network) ? null : options.Network,
+            // Names match the server's TicketKeyEnvironment / RewardClient environment variables.
+            new Dictionary<string, string>
+            {
+                ["VOXELRUSH_TICKET_KEY"] = options.TicketKey,
+                ["VOXELRUSH_API_URL"] = options.ApiUrl,
+                ["VOXELRUSH_SERVICE_TOKEN"] = options.ServiceToken,
+            },
+            [
+                "-port", serverPort.ToString(CultureInfo.InvariantCulture),
+                "-maxPlayers", options.MaxPlayers.ToString(CultureInfo.InvariantCulture),
+                "-worldDir", worldDir,
+                "-worldId", world.ToString(),
+                "-idleShutdownSeconds", options.IdleShutdownSeconds.ToString(CultureInfo.InvariantCulture),
+            ],
+            clock.GetUtcNow());
+    }
 
     private static string Key(WorldContainer c) => c.Name + "@" + c.StartedAt.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture);
 

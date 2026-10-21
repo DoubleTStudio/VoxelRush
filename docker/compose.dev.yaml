@@ -1,0 +1,10 @@
+# DEV-001 override for tools/dev-online.sh (compose project voxelrush-dev): only the db service is started, and the
+# native API reaches it on loopback. Own network name, so it never joins a real stack's voxelrush-backend.
+services:
+  db:
+    ports:
+      - "127.0.0.1:${VOXELRUSH_DEV_DB_PORT:-15434}:5432"
+
+networks:
+  default:
+    name: voxelrush-dev
