@@ -30,6 +30,8 @@ namespace VoxelRush.World.Editing
         UnsupportedAction,
         ServerBusy,
         PersistenceBackpressure,
+        NotPermitted,
+        RaceLocked,
     }
 
     /// <summary>Axis-aligned box in world block units (min inclusive, max exclusive).</summary>
@@ -68,22 +70,31 @@ namespace VoxelRush.World.Editing
     {
         public const float DefaultReach = 6f;
 
-        private readonly IReadOnlyList<WorldBox> _protectedZones;
+        private readonly ZoneMap _zones;
 
+        /// <summary>Only protected boxes; everyone else may build (public test sandbox).</summary>
         public EditValidator(IReadOnlyList<WorldBox> protectedZones, float reach = DefaultReach)
+            : this(ZoneMap.ProtectedOnly(protectedZones ?? Array.Empty<WorldBox>()), reach)
         {
-            _protectedZones = protectedZones ?? Array.Empty<WorldBox>();
+        }
+
+        public EditValidator(ZoneMap zones, float reach = DefaultReach)
+        {
+            _zones = zones;
             Reach = reach;
         }
+
+        public ZoneMap Zones => _zones;
 
         public float Reach { get; }
 
         /// <param name="actorEyeX">Eye position of the authenticated actor (server: its server-side pose, never a client claim).</param>
         /// <param name="occupants">Bounding boxes of players/vehicles that a placed block must not trap.</param>
+        /// <param name="role">The actor's role in this world (server: from membership, never from the client).</param>
         public EditRejection Validate(
             EditAction action, BlockPos target, byte blockType,
             float actorEyeX, float actorEyeY, float actorEyeZ,
-            IEditWorld world, IReadOnlyList<WorldBox> occupants)
+            IEditWorld world, IReadOnlyList<WorldBox> occupants, WorldRole role = WorldRole.Owner)
         {
             if (action == EditAction.Place && blockType == BlockIds.Air)
             {
@@ -95,12 +106,10 @@ namespace VoxelRush.World.Editing
                 return EditRejection.OutOfReach;
             }
 
-            foreach (WorldBox zone in _protectedZones)
+            EditRejection zone = _zones.Authorize(target, role, action == EditAction.Place ? ZoneAction.Place : ZoneAction.Remove);
+            if (zone != EditRejection.None)
             {
-                if (zone.Overlaps(target))
-                {
-                    return EditRejection.ProtectedZone;
-                }
+                return zone;
             }
 
             if (!world.IsLoaded(target))
@@ -158,6 +167,8 @@ namespace VoxelRush.World.Editing
             EditRejection.UnsupportedAction => "Not available yet",
             EditRejection.ServerBusy => "Server busy. Try again",
             EditRejection.PersistenceBackpressure => "Saving is catching up. Try again",
+            EditRejection.NotPermitted => "You don't have permission to build here",
+            EditRejection.RaceLocked => "The track is locked during the race",
             _ => throw new ArgumentOutOfRangeException(nameof(rejection)),
         };
 
@@ -178,6 +189,8 @@ namespace VoxelRush.World.Editing
             EditRejection.UnsupportedAction => "unsupported_action",
             EditRejection.ServerBusy => "server_busy",
             EditRejection.PersistenceBackpressure => "persistence_backpressure",
+            EditRejection.NotPermitted => "not_permitted",
+            EditRejection.RaceLocked => "race_locked",
             _ => throw new ArgumentOutOfRangeException(nameof(rejection)),
         };
     }
