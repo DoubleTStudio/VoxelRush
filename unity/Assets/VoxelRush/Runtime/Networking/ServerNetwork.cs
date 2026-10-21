@@ -53,8 +53,9 @@ namespace VoxelRush.Networking
         };
 
         /// <summary>Race lobby and flow on this listener.</summary>
-        public Race.RaceServer CreateRace(VoxelRush.Core.Race.TrackDefinition track, Vehicles.VehicleSpawner vehicles, int? autoStart) =>
-            new Race.RaceServer(_manager, track, vehicles, autoStart);
+        public Race.RaceServer CreateRace(VoxelRush.Core.Race.TrackDefinition track, Vehicles.VehicleSpawner vehicles, int? autoStart,
+            Action<IReadOnlyList<VoxelRush.Core.Race.RewardGrant>>? rewards = null) =>
+            new Race.RaceServer(_manager, track, vehicles, autoStart, rewards);
 
         /// <summary>The session id a connected client presented (VR-062); empty if unknown.</summary>
         public Guid SessionOf(ulong clientId) => _gate.SessionOf(clientId);

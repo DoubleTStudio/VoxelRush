@@ -109,8 +109,17 @@ namespace VoxelRush.Tests.Domain.Security
         /// <summary>Writes reach the OS but fsync fails, like a crash right before durability.</summary>
         private sealed class FailingFlushStream : FileStream
         {
-            public FailingFlushStream(string path) : base(path, FileMode.OpenOrCreate, FileAccess.Write)
+            private bool _closing;
+
+            public FailingFlushStream(string path) : base(path, FileMode.OpenOrCreate, FileAccess.Write, FileShare.ReadWrite)
             {
+            }
+
+            protected override void Dispose(bool disposing)
+            {
+                // The "machine" restarts: the handle is released without a successful flush.
+                _closing = true;
+                base.Dispose(disposing);
             }
 
             public override void Write(byte[] array, int offset, int count)
@@ -118,9 +127,15 @@ namespace VoxelRush.Tests.Domain.Security
                 // Nothing reaches the file: a power cut loses unsynced data.
             }
 
-            public override void Flush(bool flushToDisk) => throw new IOException("power lost before fsync");
+            public override void Flush(bool flushToDisk)
+            {
+                if (!_closing)
+                {
+                    throw new IOException("power lost before fsync");
+                }
+            }
 
-            public override void Flush() => throw new IOException("power lost before fsync");
+            public override void Flush() => Flush(true);
         }
     }
 

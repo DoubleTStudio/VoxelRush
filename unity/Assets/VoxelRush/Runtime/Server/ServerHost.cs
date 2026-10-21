@@ -29,6 +29,7 @@ namespace VoxelRush.Server
         private NetworkSimulation? _simulation;
         private WorldSyncServer? _world;
         private RaceServer? _race;
+        private RewardClient? _rewards;
 
         // First networked slice: a flat build plot around the spawn row (world x −48..47, z −80..−17, y −32..15).
         private static readonly WorldInfo PlotWorld = new WorldInfo(
@@ -122,7 +123,14 @@ namespace VoxelRush.Server
                 ? new WorldInfo(id, PlotWorld.Kind, PlotWorld.Seed, PlotWorld.GeneratorVersion, PlotWorld.SchemaVersion, PlotWorld.RegionMin, PlotWorld.RegionMax)
                 : PlotWorld;
             _world = _network.CreateWorldSync(world, worldDir, _vehicles.EyeOf, _vehicles.Occupants);
-            _race = _network.CreateRace(ArenaTrack.Create(), _vehicles, Options.RaceAutoStart);
+            // SAVE-006: XP for validated results, only with API identities (tickets) and API credentials configured.
+            if (tickets != null)
+            {
+                _rewards = RewardClient.FromEnvironment(System.IO.Path.Combine(worldDir, "rewards-outbox.txt"));
+                Debug.Log(LogEvent.Format("server_rewards", ("enabled", _rewards != null)));
+            }
+
+            _race = _network.CreateRace(ArenaTrack.Create(), _vehicles, Options.RaceAutoStart, _rewards == null ? null : _rewards.Enqueue);
             _simulation = NetworkSimulation.Instance;
             _nextMetricsAt = Time.realtimeSinceStartupAsDouble + MetricsIntervalSeconds;
             NetworkBandwidth.Meter.Flush(Time.realtimeSinceStartupAsDouble);
@@ -194,6 +202,8 @@ namespace VoxelRush.Server
 
         private void OnDestroy()
         {
+            _rewards?.Dispose();
+            _rewards = null;
             _world?.Dispose();
             _world = null;
             _network?.Dispose();
