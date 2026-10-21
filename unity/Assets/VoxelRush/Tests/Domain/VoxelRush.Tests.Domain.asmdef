@@ -4,6 +4,7 @@
     "references": [
         "VoxelRush.Core",
         "VoxelRush.World",
+        "VoxelRush.Destruction",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],

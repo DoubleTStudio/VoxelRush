@@ -10,6 +10,15 @@ namespace VoxelRush.World.Chunks
         public const byte Grass = 1;
         public const byte Dirt = 2;
         public const byte Stone = 3;
+        public const byte Wood = 4;
+        public const byte Asphalt = 5;
+        public const byte Reinforced = 6;
+        public const byte Protected = 7;
+        public const byte Brick = 8;
+        public const byte Concrete = 9;
+        public const byte Glass = 10;
+        public const byte Sand = 11;
+        public const byte Metal = 12;
     }
 
     /// <summary>
