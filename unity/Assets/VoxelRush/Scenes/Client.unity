@@ -3071,6 +3071,8 @@ GameObject:
   - component: {fileID: 1700000006}
   - component: {fileID: 1700000007}
   - component: {fileID: 1700000016}
+  - component: {fileID: 1700000100}
+  - component: {fileID: 1700000101}
   - component: {fileID: 1700000300}
   m_Layer: 0
   m_Name: NetworkWorld
@@ -3171,6 +3173,31 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 76de1562f68b4626997c7e23bbcb2eda, type: 3}
   m_Name: 
   m_EditorClassIdentifier: VoxelRush.Presentation::VoxelRush.Presentation.UI.GameMenu
+--- !u!114 &1700000100
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1700000001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6a62b48c1d0d4f629c3d9845dc533935, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: VoxelRush.Presentation::VoxelRush.Presentation.World.CheckpointView
+  _material: {fileID: 2100000, guid: 9cc30d15b3b83445bb43f128f0234c09, type: 2}
+--- !u!114 &1700000101
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1700000001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 61d8763f83be446da43481e2284175f2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: VoxelRush.Presentation::VoxelRush.Presentation.UI.RaceDashboard
 --- !u!114 &1700000300
 MonoBehaviour:
   m_ObjectHideFlags: 0

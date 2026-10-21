@@ -38,6 +38,57 @@ namespace VoxelRush.Tests.Domain.Settings
             Assert.That(File.Exists(FilePath + ".tmp"), Is.False);
         }
 
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Vibration_RoundTrips(bool vibration)
+        {
+            new LocalSettings(ControlSettings.Default, null, 1f, 1f, vibration).Save(_dir);
+
+            LocalSettings loaded = LocalSettings.Load(_dir);
+
+            Assert.That(loaded.Vibration, Is.EqualTo(vibration));
+            Assert.That(loaded.Source, Is.EqualTo("file"));
+            Assert.That(File.ReadAllLines(FilePath), Does.Contain("version=" + LocalSettings.FormatVersion), "still format 1, so older builds keep reading it");
+        }
+
+        [Test]
+        public void Vibration_MissingFromAnOlderFile_DefaultsOn_AndKeepsTheRest()
+        {
+            Directory.CreateDirectory(_dir);
+            File.WriteAllLines(FilePath, new[] { "version=1", "controls.sensitivity=1.7", "controls.buttonScale=0.8", "quality.tier=Low", "audio.music=0.25", "audio.effects=0.5" });
+
+            LocalSettings loaded = LocalSettings.Load(_dir);
+
+            Assert.That(loaded.Vibration, Is.True);
+            Assert.That((loaded.Controls.Sensitivity, loaded.QualityOverride, loaded.EffectsVolume, loaded.Source), Is.EqualTo((1.7f, (QualityTier?)QualityTier.Low, 0.5f, "file")));
+            Assert.That(LocalSettings.Default.Vibration, Is.True);
+        }
+
+        [TestCase("off", false)]
+        [TestCase("OFF", false)]
+        [TestCase("0", false)]
+        [TestCase("false", false)]
+        [TestCase("on", true)]
+        [TestCase("maybe", true)]
+        [TestCase("", true)]
+        public void Vibration_ParsesLeniently_GarbageKeepsTheDefault(string value, bool expected)
+        {
+            Directory.CreateDirectory(_dir);
+            File.WriteAllLines(FilePath, new[] { "version=1", "accessibility.vibration=" + value });
+
+            Assert.That(LocalSettings.Load(_dir).Vibration, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Vibration_OffSurvivesASaveOfOtherSettings()
+        {
+            new LocalSettings(ControlSettings.Default, QualityTier.High, 1f, 1f, vibration: false).Save(_dir);
+            LocalSettings loaded = LocalSettings.Load(_dir);
+            new LocalSettings(loaded.Controls, loaded.QualityOverride, loaded.MusicVolume, 0.3f, loaded.Vibration).Save(_dir);
+
+            Assert.That(LocalSettings.Load(_dir).Vibration, Is.False);
+        }
+
         [Test]
         public void MissingFile_GivesDefaults_WithAdaptiveQuality()
         {
