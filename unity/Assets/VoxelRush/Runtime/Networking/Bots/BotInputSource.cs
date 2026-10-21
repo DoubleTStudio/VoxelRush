@@ -1,5 +1,7 @@
 using System;
 using UnityEngine;
+using VoxelRush.Core;
+using VoxelRush.Core.Diagnostics;
 using VoxelRush.Core.Input;
 using VoxelRush.Core.Race;
 using VoxelRush.Networking.Race;
@@ -43,6 +45,14 @@ namespace VoxelRush.Networking.Bots
 
         private void Awake()
         {
+            // A batchmode player otherwise runs uncapped: 8 spinning bots starve the server on a 2-core CI runner.
+            if (Application.isBatchMode && !Application.isEditor)
+            {
+                QualitySettings.vSyncCount = 0;
+                Application.targetFrameRate = SimulationConstants.ServerTickRate;
+                Debug.Log(LogEvent.Format("bot_frame_cap", ("targetFrameRate", Application.targetFrameRate)));
+            }
+
             string[] args = Environment.GetCommandLineArgs();
             _drive = Array.IndexOf(args, DriveArgument) >= 0;
             _race = Array.IndexOf(args, RaceArgument) >= 0;

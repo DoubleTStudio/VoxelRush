@@ -10,7 +10,8 @@ on:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # CI-002: a merge must not cancel main's full suite mid-run; the newest push waits instead.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -108,6 +109,8 @@ jobs:
     if: needs.unity-license.outputs.available == 'true' && needs.changes.outputs.unity == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 150
+    outputs:
+      ios: ${{ steps.ios-package.outcome }}
     concurrency:
       group: unity-personal-license
       cancel-in-progress: false
@@ -171,56 +174,64 @@ jobs:
 
       # Development build: latency simulation and cheat mode are dev-only.
       - name: Build Linux headless bot
+        id: bot-build
         run: tools/build.sh bot-linux --development
+      # CI-002: end-to-end tests run even after an earlier one fails, so one run reports every regression.
       # VR-002 DoD: server image + two headless Linux bots join; with -maxPlayers 1 the second is refused.
       - name: Join test (Docker server image + 2 bots)
+        if: ${{ !cancelled() && steps.bot-build.outcome == 'success' }}
         run: tools/smoke-join.sh docker
       # VR-012 DoD: two predicted cars at 100 ms RTT on the authoritative server; a speed hack is rejected.
       - name: Drive test (2 predicted cars, 100 ms RTT, speed hack)
+        if: ${{ !cancelled() && steps.bot-build.outcome == 'success' }}
         run: tools/smoke-drive.sh docker
       # VR-033 DoD: late-join chunk hashes match the server's, and survive a server restart (journal recovery).
       - name: World sync test (builders, late join, restart)
+        if: ${{ !cancelled() && steps.bot-build.outcome == 'success' }}
         run: tools/smoke-world.sh docker
       # VR-062 DoD: 8-player race flow (lobby auto-start, validated gates, reconnect, identical results on every client).
       # A 2-core hosted runner can't run the server plus 8 Unity bots at 30 Hz (ticks stall for seconds); 8-player
       # load is covered by the load test's lighter bots.
       - name: Race flow test (4 racers)
+        if: ${{ !cancelled() && steps.bot-build.outcome == 'success' }}
         env:
           RACE_BOTS: 4
         run: tools/smoke-race.sh docker
       # VR-080: API-issued join tickets admitted by a ticket-only server; replayed/forged/missing tickets refused.
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        if: ${{ !cancelled() && steps.bot-build.outcome == 'success' }}
         with:
           global-json-file: global.json
       - name: Auth flow test (API tickets + game server)
+        if: ${{ !cancelled() && steps.bot-build.outcome == 'success' }}
         run: tools/build-api.sh && tools/smoke-auth.sh docker
       # SAVE-006: validated race rewards granted once through the API; a linked second device sees them.
       - name: Progression flow test (rewards, cross-device, no double grant)
-        if: env.FULL == 'true'
+        if: ${{ !cancelled() && steps.bot-build.outcome == 'success' && env.FULL == 'true' }}
         run: tools/smoke-progression.sh docker
       # SAVE-005: one server per world (lease), idle shutdown releases it, the saved world survives the handover.
       - name: World lease test (single writer, idle shutdown, handover)
-        if: env.FULL == 'true'
+        if: ${{ !cancelled() && steps.bot-build.outcome == 'success' && env.FULL == 'true' }}
         run: tools/smoke-lease.sh docker
       # SAVE-009: database rebuilt from a dump, point-in-time restore, stale server disk rebuilt from storage.
       - name: Recovery drill (pg_dump restore, point-in-time world restore)
-        if: env.FULL == 'true'
+        if: ${{ !cancelled() && steps.bot-build.outcome == 'success' && env.FULL == 'true' }}
         run: tools/recovery-drill.sh docker
       # SAVE-008: device chunk cache: unchanged chunks confirmed on rejoin, tampered entries fall back to the server.
       - name: Chunk cache test (rejoin confirmations, tamper fallback)
-        if: env.FULL == 'true'
+        if: ${{ !cancelled() && steps.bot-build.outcome == 'success' && env.FULL == 'true' }}
         run: tools/smoke-cache.sh docker
       # VR-072 DoD: drive, world sync and race again with 2% packet loss inside Unity Transport; full runs only.
       - name: Loss test (2% transport loss)
-        if: env.FULL == 'true'
+        if: ${{ !cancelled() && steps.bot-build.outcome == 'success' && env.FULL == 'true' }}
         run: tools/smoke-loss.sh docker 2
       # VR-082: 8 players build/cut/collapse while the server is SIGKILLed; no acknowledged edit may be lost. Full runs only.
       - name: Destruction stress (8 bots, server crash)
-        if: env.FULL == 'true'
+        if: ${{ !cancelled() && steps.bot-build.outcome == 'success' && env.FULL == 'true' }}
         run: tools/stress-destruction.sh docker
       # VR-013: 8-player load; full runs only (8 bot processes on the runner).
       - name: Load test (8 bots, 30 Hz tick metrics)
-        if: env.FULL == 'true'
+        if: ${{ !cancelled() && steps.bot-build.outcome == 'success' && env.FULL == 'true' }}
         run: tools/load-test.sh docker 8 30
 
       # VR-081: rollback drill against the previous :main image, then publish server + API images to GHCR.
@@ -231,18 +242,22 @@ jobs:
         run: tools/publish-images.sh
       # VR-081: alert conditions (docs/operations/MONITORING.md) on the smoke servers' logs.
       - name: Server log alert check
+        if: ${{ !cancelled() && steps.bot-build.outcome == 'success' }}
         run: for log in artifacts/smoke-world/server1.log artifacts/smoke-race/server.log artifacts/smoke-auth/server.log; do tools/check-server-log.sh "$log"; done
 
       - name: Build Android APK
-        if: env.FULL == 'true'
+        id: android-build
+        if: ${{ !cancelled() && env.FULL == 'true' }}
         run: tools/build.sh android
 
       - name: Build iOS Xcode project
-        if: env.BUILD_IOS == 'true'
+        id: ios-build
+        if: ${{ !cancelled() && env.BUILD_IOS == 'true' }}
         run: tools/build.sh ios
       # Tar keeps executable bits and symlinks that artifact upload would drop.
       - name: Package iOS Xcode project
-        if: env.BUILD_IOS == 'true'
+        id: ios-package
+        if: ${{ !cancelled() && steps.ios-build.outcome == 'success' }}
         run: tar -C build/ios -czf ios-xcode.tgz Xcode
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -273,13 +288,13 @@ jobs:
             !build/server/*_DoNotShip/
           retention-days: 7
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: env.FULL == 'true'
+        if: ${{ !cancelled() && steps.android-build.outcome == 'success' }}
         with:
           name: android-apk
           path: build/android/VoxelRush.apk
           retention-days: 7
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: env.BUILD_IOS == 'true'
+        if: ${{ !cancelled() && steps.ios-package.outcome == 'success' }}
         with:
           name: ios-xcode-project
           path: ios-xcode.tgz
@@ -289,7 +304,8 @@ jobs:
   compile-ios:
     name: iOS compile (unsigned)
     needs: unity
-    if: github.event_name != 'pull_request'
+    # Runs when the Xcode project was packaged, even if an end-to-end test failed.
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.unity.outputs.ios == 'success' }}
     runs-on: macos-15
     timeout-minutes: 60
     steps:
