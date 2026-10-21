@@ -17,6 +17,8 @@ IMAGE="voxelrush-server:smoke"
 NETWORK="voxelrush-load"
 BOT_IMAGE="ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac"
 pids=()
+# Extra bot flags from the environment, e.g. BOT_ARGS="-simTransportLossPercent 2" (tools/smoke-loss.sh).
+read -r -a BOT_EXTRA <<<"${BOT_ARGS:-}"
 
 rm -rf "$LOGS" && mkdir -p "$LOGS"
 
@@ -46,7 +48,7 @@ grep -q "event=server_listening" "$LOGS/server.log" || fail "server never listen
 
 bot_pids=()
 for i in $(seq 1 "$BOTS"); do
-  args=(-batchmode -nographics -logFile - -connect "$ENDPOINT" -smokeTestSeconds "$SECONDS_DRIVING" -botDrive -simRttMs "$RTT_MS")
+  args=(-batchmode -nographics -logFile - -connect "$ENDPOINT" -smokeTestSeconds "$SECONDS_DRIVING" -botDrive -simRttMs "$RTT_MS" "${BOT_EXTRA[@]+"${BOT_EXTRA[@]}"}")
   if [[ "$MODE" == "docker" ]]; then
     docker run --rm --init --network "$NETWORK" --user 10001 -e HOME=/tmp -v "$ROOT/build/bot-linux:/bot:ro" "$BOT_IMAGE" \
       timeout --kill-after=10 "$PROCESS_TIMEOUT" /bot/VoxelRushBot.x86_64 "${args[@]}" >"$LOGS/bot$i.log" 2>&1 &
@@ -63,8 +65,10 @@ code=0; wait "$SERVER_PID" || code=$?
 [[ $failed -eq 0 ]] || fail "a bot failed (see $LOGS/bot*.log)"
 [[ $code -eq 0 ]] || fail "server exit $code"
 [[ $(grep -c "event=vehicle_spawned " "$LOGS/server.log") -eq "$BOTS" ]] || fail "expected $BOTS vehicles spawned"
-spawns=$(grep "event=vehicle_spawned " "$LOGS/server.log" | sed -nE 's/.*position="([^"]+)".*/\1/p' | sort -u | wc -l | tr -d ' ')
-[[ "$spawns" -eq "$BOTS" ]] || fail "only $spawns distinct spawn points for $BOTS cars"
+# Every car starts on the grid row (z = -40), never at the origin (the VR-012 spawn bug). Bots start driving at once,
+# so later bots may reuse grid slots the first ones already left.
+on_grid=$(grep "event=vehicle_spawned " "$LOGS/server.log" | grep -c 'position="([^,]*, 1.50, -40.00)"' || true)
+[[ "$on_grid" -eq "$BOTS" ]] || fail "only $on_grid of $BOTS cars spawned on the grid"
 
 python3 -I - "$LOGS" "$BOTS" "$RTT_MS" <<'PY'
 import json, re, sys

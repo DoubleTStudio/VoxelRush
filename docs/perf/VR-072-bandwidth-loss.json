@@ -1,0 +1,25 @@
+{
+  "task": "VR-072",
+  "date": "2026-10-21",
+  "host": "macOS arm64 (Apple M3), native server + bots on one machine",
+  "metric": "server-to-client game payload bytes (vehicle snapshots, world and race messages; no transport headers or resends)",
+  "loadTest8Bots40s": {
+    "sentBytes": 1540978,
+    "skippedSnapshotBytes": 1059288,
+    "snapshotPayloadReductionPercent": 40.7,
+    "peakBytesPerSecPerClient": 7766,
+    "windowMeanBytesPerSecPerClient": [4551, 7014, 5465, 4833, 4124, 4112, 3788, 3501],
+    "note": "bots spread out while driving; reduction grows with distance"
+  },
+  "race8BotsPack": {
+    "peakBytesPerSecPerClient": 8367,
+    "note": "cars stay within 80 m, so every car is at full rate: 7 cars x 15 Hz x 69 B + own car"
+  },
+  "loss2Percent": {
+    "drive": "PASS: mean prediction error 0.037 m, 0 snaps, speed hack still rejected",
+    "worldSync": "PASS: late join + restart hashes match",
+    "race8": "PASS: 8/8 finished, reconnect resumed, identical results",
+    "observedInputAckMs": {"lossless": 121, "transportSimulator2Percent": 201}
+  },
+  "loadTestBotRttMsRunToRun": [149, 166, 159, 199, 202]
+}

@@ -41,12 +41,25 @@ namespace VoxelRush.Networking
         /// <summary>This process's session id; reused across reconnects so the server can resume the player's race.</summary>
         public static Guid Session { get; } = Guid.NewGuid();
 
+        // Dev builds: real packet loss/delay inside Unity Transport (-simTransportLossPercent / -simTransportDelayMs).
+        private static void ConfigureTransportSimulation()
+        {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (TransportSimulationOptions.TryParse(Environment.GetCommandLineArgs(), out TransportSimulationOptions options, out _) && options.IsActive)
+            {
+                Unity.Netcode.Transports.UTP.UnityTransport.s_DriverConstructor = new LossyDriverConstructor(options, (uint)Session.GetHashCode());
+                UnityEngine.Debug.Log(VoxelRush.Core.Diagnostics.LogEvent.Format("network_transport_simulation", ("lossPercent", options.LossPercent), ("delayMs", options.DelayMs)));
+            }
+#endif
+        }
+
         public static ClientNetwork? Connect(ServerEndpoint endpoint)
         {
             string address = NetworkRuntime.ResolveIPv4(endpoint.Host);
             NetworkManager manager = NetworkRuntime.Create("ClientNetwork");
             NetworkRuntime.Transport(manager).SetConnectionData(address, endpoint.Port);
             manager.NetworkConfig.ConnectionData = ConnectionPayload.Encode(SimulationConstants.ProtocolVersion, Session);
+            ConfigureTransportSimulation();
 
             var client = new ClientNetwork(manager);
             if (manager.StartClient())

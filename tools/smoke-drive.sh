@@ -16,6 +16,8 @@ IMAGE="voxelrush-server:smoke"
 NETWORK="voxelrush-drive"
 BOT_IMAGE="ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac"
 pids=()
+# Extra bot flags from the environment, e.g. BOT_ARGS="-simTransportLossPercent 2" (tools/smoke-loss.sh).
+read -r -a BOT_EXTRA <<<"${BOT_ARGS:-}"
 
 rm -rf "$LOGS" && mkdir -p "$LOGS"
 
@@ -50,7 +52,7 @@ grep -q "event=server_listening" "$LOGS/server.log" || fail "server never listen
 
 start_bot() {
   local log="$1"; shift
-  local args=(-batchmode -nographics -logFile - -smokeTestSeconds "$DRIVE_SECONDS" -botDrive -simRttMs "$RTT_MS" "$@")
+  local args=(-batchmode -nographics -logFile - -smokeTestSeconds "$DRIVE_SECONDS" -botDrive -simRttMs "$RTT_MS" "$@" "${BOT_EXTRA[@]+"${BOT_EXTRA[@]}"}")
   if [[ "$MODE" == "docker" ]]; then
     docker run --rm --init --network "$NETWORK" --user 10001 -e HOME=/tmp -v "$ROOT/build/bot-linux:/bot:ro" "$BOT_IMAGE" \
       timeout --kill-after=10 "$PROCESS_TIMEOUT" /bot/VoxelRushBot.x86_64 -connect "voxelrush-drive-server:$PORT" "${args[@]}" >"$log" 2>&1 &
@@ -91,7 +93,8 @@ for bot in honest cheat; do
   check "$bot bot mean prediction error too large" "$(last "$log" vehicle_prediction_stats meanErrorM)" "v >= 0 && v < 0.25"
   # Error-driven snaps only; pre-ack re-syncs are logged separately as sync.
   check "$bot bot hard-corrected too often" "$(last "$log" vehicle_prediction_stats snap)" "v <= 3"
-  check "$bot bot saw too few remote snapshots" "$(last "$log" vehicle_remote_stats snapshots)" "v >= 200"
+  # The two cars drive apart, so interest management (VR-072) sends the other car at 7.5 or 5 Hz once it's far.
+  check "$bot bot saw too few remote snapshots" "$(last "$log" vehicle_remote_stats snapshots)" "v >= 100"
   check "$bot bot received remote snapshots out of order" "$(last "$log" vehicle_remote_stats outOfOrder)" "v == 0"
 done
 
