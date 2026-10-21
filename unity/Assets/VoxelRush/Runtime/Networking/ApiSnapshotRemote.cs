@@ -52,7 +52,7 @@ namespace VoxelRush.Networking
                 throw new IOException("snapshot index response incomplete");
             }
 
-            byte[] bytes = Wrap(() =>
+            byte[] bytes = Retry(() =>
             {
                 using HttpResponseMessage response = _storage.GetAsync(url).GetAwaiter().GetResult();
                 if (!response.IsSuccessStatusCode || response.Content.Headers.ContentLength > MaxSnapshotBytes)
@@ -80,7 +80,7 @@ namespace VoxelRush.Networking
                 throw new IOException($"snapshot upload refused ({(int)status})");
             }
 
-            Wrap(() =>
+            Retry(() =>
             {
                 using HttpResponseMessage put = _storage.PutAsync(url, new ByteArrayContent(bytes)).GetAwaiter().GetResult();
                 return put.IsSuccessStatusCode ? true : throw new IOException($"snapshot PUT failed ({(int)put.StatusCode})");
@@ -118,6 +118,22 @@ namespace VoxelRush.Networking
             }
 
             return body;
+        }
+
+        // Object stores return transient 500/503s (S3 asks clients to retry); presigned URLs stay valid for minutes.
+        private static T Retry<T>(Func<T> call)
+        {
+            for (int attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    return Wrap(call);
+                }
+                catch (IOException) when (attempt < 3)
+                {
+                    System.Threading.Thread.Sleep(500 * attempt);
+                }
+            }
         }
 
         // Network failures surface as IOException, which callers already treat as "storage unavailable".

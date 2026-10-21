@@ -124,6 +124,23 @@ namespace VoxelRush.Tests.Domain.World
         }
 
         [Test]
+        public void AlignEpoch_WipesOnlyTheOldTimeline()
+        {
+            WorldStore store = NewMachine();
+            store.WriteSnapshot(Edited(A, 3));
+            File.WriteAllText(Path.Combine(store.Directory, WorldStore.JournalFileName), "old");
+            File.WriteAllText(Path.Combine(store.Directory, "rewards-outbox.txt"), "keep");
+
+            Assert.That(SnapshotSync.AlignEpoch(store.Directory, 0), Is.False, "same epoch (no marker = 0)");
+            Assert.That(store.SnapshotRevision(A), Is.EqualTo(3));
+            Assert.That(SnapshotSync.AlignEpoch(store.Directory, 1), Is.True);
+            Assert.That(File.Exists(Path.Combine(store.Directory, WorldStore.JournalFileName)), Is.False);
+            Assert.That(new WorldStore(store.Directory, TerrainGenerator.Version, Generator.GenerateBlocks).SnapshotRevision(A), Is.Null);
+            Assert.That(File.ReadAllText(Path.Combine(store.Directory, "rewards-outbox.txt")), Is.EqualTo("keep"), "pending rewards survive");
+            Assert.That(SnapshotSync.AlignEpoch(store.Directory, 1), Is.False);
+        }
+
+        [Test]
         public void Restore_FailsClosed_WhenStorageIsUnreachable()
         {
             Assert.Throws<IOException>(() => new SnapshotSync(NewMachine(), new FakeRemote { Down = true }).Restore(new[] { A }));

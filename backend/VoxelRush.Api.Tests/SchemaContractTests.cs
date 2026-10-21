@@ -67,9 +67,12 @@ public sealed class SchemaContractTests
     }
 
     [TestCase("players", "id,kind,created_at,last_seen_at")]
-    [TestCase("worlds", "id,owner_id,name,seed,generator_version,schema_version,visibility,status,created_at,last_saved_at,revision")]
+    [TestCase("worlds", "id,owner_id,name,seed,generator_version,schema_version,visibility,status,created_at,last_saved_at,revision,restore_epoch")]
     [TestCase("world_members", "world_id,player_id,role,invited_by,expires_at")]
-    [TestCase("chunk_snapshots", "world_id,chunk_x,chunk_y,chunk_z,revision,storage_key,sha256,size_bytes,status,created_at")]
+    [TestCase("chunk_snapshots", "world_id,chunk_x,chunk_y,chunk_z,revision,storage_key,sha256,size_bytes,status,created_at,epoch,committed_at")]
+    [TestCase("world_leases", "world_id,holder,fencing,expires_at,released")]
+    [TestCase("world_restores", "id,world_id,actor_id,as_of,epoch,chunks,created_at")]
+    [TestCase("player_entitlements", "player_id,sku,source,transaction_id,status,granted_at,revoked_at")]
     [TestCase("player_progress", "player_id,xp,level,version,updated_at")]
     [TestCase("player_settings", "player_id,settings,version,updated_at")]
     [TestCase("reward_grants", "grant_key,player_id,kind,amount,source,created_at")]
@@ -95,6 +98,7 @@ public sealed class SchemaContractTests
     [TestCase("INSERT INTO world_quotas (owner_id, max_worlds, max_stored_bytes, idle_shutdown_seconds) VALUES ($1, 1, -5, 300)")]
     [TestCase("INSERT INTO worlds (id, owner_id, name, seed, generator_version, schema_version, visibility) VALUES (gen_random_uuid(), $1, 'x', 1, 1, 1, 'everyone')")]
     [TestCase("INSERT INTO player_settings (player_id, settings) VALUES ($1, jsonb_build_object('blob', repeat('x', 9000)))")]
+    [TestCase("INSERT INTO player_entitlements (player_id, sku, source, transaction_id) VALUES ($1, 'paint.x', 'gift', 't')")]
     public async Task Constraints_RejectOutOfContractRows(string sql)
     {
         Guid player = await PlayerAsync();

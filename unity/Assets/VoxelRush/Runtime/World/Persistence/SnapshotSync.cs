@@ -35,7 +35,36 @@ namespace VoxelRush.World.Persistence
             LoadIndex();
         }
 
+        /// <summary>Why the last upload failed (for the shutdown log), or null.</summary>
+        public string? LastError { get; private set; }
+
         private string IndexPath => Path.Combine(_store.Directory, "snapshots", UploadedIndexName);
+
+        public const string EpochFileName = "epoch";
+
+        /// <summary>
+        /// SAVE-009: after a restore the world is on a new epoch and this disk's journal and snapshots belong to the old
+        /// timeline. Deletes them (other files such as the reward outbox stay) and records the epoch. Returns true if wiped.
+        /// </summary>
+        public static bool AlignEpoch(string directory, int epoch)
+        {
+            string marker = Path.Combine(directory, EpochFileName);
+            int local = File.Exists(marker) && int.TryParse(File.ReadAllText(marker).Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out int e) ? e : 0;
+            bool wipe = local != epoch;
+            if (wipe)
+            {
+                File.Delete(Path.Combine(directory, WorldStore.JournalFileName));
+                string snapshots = Path.Combine(directory, "snapshots");
+                if (System.IO.Directory.Exists(snapshots))
+                {
+                    System.IO.Directory.Delete(snapshots, recursive: true);
+                }
+            }
+
+            System.IO.Directory.CreateDirectory(directory);
+            File.WriteAllText(marker, epoch.ToString(CultureInfo.InvariantCulture));
+            return wipe;
+        }
 
         /// <summary>Imports remote snapshots newer than local ones. Throws when the remote is unreachable: fail closed
         /// rather than serve (and later publish) an older world.</summary>
@@ -89,9 +118,10 @@ namespace VoxelRush.World.Persistence
                     uploaded++;
                     SaveIndex();
                 }
-                catch (IOException)
+                catch (IOException e)
                 {
                     failed++;
+                    LastError = e.Message;
                 }
             }
 

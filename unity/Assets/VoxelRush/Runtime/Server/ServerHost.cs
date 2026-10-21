@@ -10,6 +10,7 @@ using VoxelRush.Networking.Vehicles;
 using VoxelRush.Networking.World;
 using VoxelRush.World.Chunks;
 using VoxelRush.World.Generation;
+using VoxelRush.World.Persistence;
 using VoxelRush.World.Sync;
 
 namespace VoxelRush.Server
@@ -158,6 +159,11 @@ namespace VoxelRush.Server
                         Debug.LogWarning(LogEvent.Format("world_snapshots_disabled", ("reason", "storage_disabled")));
                         _snapshots.Dispose();
                         _snapshots = null;
+                    }
+                    else if (SnapshotSync.AlignEpoch(worldDir, _lease.Epoch))
+                    {
+                        // SAVE-009: the world was restored; rebuild this disk from storage.
+                        Debug.LogWarning(LogEvent.Format("world_local_reset", ("epoch", _lease.Epoch)));
                     }
                 }
 

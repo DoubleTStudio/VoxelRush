@@ -46,6 +46,9 @@ namespace VoxelRush.Networking
 
         public string? HeldBy { get; private set; }
 
+        /// <summary>The world's restore epoch (SAVE-009).</summary>
+        public int Epoch { get; private set; }
+
         public volatile bool Lost;
 
         public LeaseAcquire Acquire()
@@ -66,6 +69,7 @@ namespace VoxelRush.Networking
                 }
 
                 Fencing = fencing;
+                Epoch = int.TryParse(Field(body, "epoch"), out int epoch) ? epoch : 0;
                 _expiresAt = DateTimeOffset.UtcNow.AddSeconds(TtlSeconds);
                 _renewals = Task.Run(RenewLoopAsync);
                 return LeaseAcquire.Granted;

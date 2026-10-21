@@ -182,7 +182,7 @@ namespace VoxelRush.Networking.World
             {
                 // Only what the journal made durable is published.
                 (int written, int uploaded, int failed) = _sync.Publish(Region());
-                Debug.Log(LogEvent.Format("world_snapshots_published", ("written", written), ("uploaded", uploaded), ("failed", failed)));
+                Debug.Log(LogEvent.Format("world_snapshots_published", ("written", written), ("uploaded", uploaded), ("failed", failed), ("error", _sync.LastError ?? "none")));
             }
 
             foreach (ChunkCoord coord in _info.RegionChunks())
