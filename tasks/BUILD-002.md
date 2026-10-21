@@ -33,7 +33,19 @@ Players build ramps from the phone and drive up and jump off them. Ramps render,
 - No server-side `Rotate` of an already placed ramp. Remove it and place it again.
 
 ## Verification (2026-10-21, macOS arm64)
-_Filled in below._
+Run after merging main (COSM-002, RACE-003).
+
+| Command | Result |
+|---|---|
+| `tools/test.sh domain` | Passed 578/578. New `RampTests`: ids and rotation; closed, correctly wound solids with the expected volume; slope normals per yaw; culling against blocks, long-ramp seams, back-to-back kickers, same and turned neighbours, across chunk borders; cube-only golden hash unchanged; validator accepts ramps and refuses unknown, protected and air ids; journal, replica, snapshot and reload round trip; ramp on a cut pillar collapses; HP damage and explosion. `MaterialTests` also checks that catalog `Buildable` equals the edit rule for all 256 ids. |
+| `tools/test.sh editmode` | Passed 690/690. New: Burst mesher output equals the managed mesher's with dense ramps of every id, on and across chunk borders. `RampWireTests`: every ramp id through the `EditIntent` wire and the journal/delta record. |
+| `tools/test.sh playmode` | Passed 67/67. New `RampDriveTests` (ArcadeCar prefab on `WorldColliders`): the wheel ray reads the slope; low + high ramp onto a platform in all 4 yaws; kicker jump in all 4 yaws. Each run ends with no impulse contact between body and ramp, at least 70% of the entry speed kept over the ramp, no resets, upright and stopped. Measured: long ramp 9.1 → 9.1 m/s; kicker 9.1 → 7.4 m/s, airborne 33 steps, peak 2.15 m. New `BuildGhostTests`: green ramp ghost, rotate turns it, confirm clears it; red with the validator's reason (out of reach, occupied), refused confirm keeps the aim; remove ghost takes the block's shape; camera tap aims and a second tap confirms. Existing scene tests still pass (palette, no colliders under `NetworkWorld`). |
+| `tools/build.sh server-mac` | Built |
+| `tools/build.sh bot-mac --development` | Built |
+| `tools/build.sh android --development` | Built `build/android/VoxelRush.apk` |
+| `SMOKE_PORT=7797 tools/smoke-world.sh native` | WORLD SMOKE PASS: server on port 7797 with `protocolVersion=6`; ramp builder A2 got 30/30 edits accepted; late join and restart hashes match; tower collapsed. |
+
+During tuning, a 1:1 one-block slope stopped the car dead (the body hit the slope, min speed 0). A 3:4 kicker kept the body clear but dropped speed from 9.1 to 4.3 m/s. These results set the variants above.
 
 ## Risks / rollback
 - Protocol bump: clients and servers must roll out together.

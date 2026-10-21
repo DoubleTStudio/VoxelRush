@@ -30,7 +30,8 @@ namespace VoxelRush.Presentation.World
             // A primitive's renderer brings the pipeline's default lit material, present in every client build.
             _object = GameObject.CreatePrimitive(PrimitiveType.Cube);
             _object.name = "BuildGhost";
-            Object.Destroy(_object.GetComponent<Collider>());
+            // Immediately: nothing under NetworkWorld may collide, not even for a frame.
+            Object.DestroyImmediate(_object.GetComponent<Collider>());
             _object.transform.SetParent(parent, false);
             _object.transform.localScale = Vector3.one * (1f + 2f * Grow);
             _filter = _object.GetComponent<MeshFilter>();
