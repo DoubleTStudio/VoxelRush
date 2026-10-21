@@ -14,6 +14,9 @@ public sealed record AddMemberRequest(Guid PlayerId, string? Role);
 
 public sealed record JoinResponse(string Ticket, string Endpoint, DateTimeOffset ExpiresAt, string Role);
 
+/// <summary>202 body while the world's server boots; the client calls join again after the delay.</summary>
+public sealed record JoinPending(string Status, int RetryAfterSeconds);
+
 public enum WorldError
 {
     None,
@@ -24,7 +27,7 @@ public enum WorldError
 }
 
 /// <summary>World metadata, membership and join decisions. A world a player may not see is reported as not found.</summary>
-public sealed partial class WorldStore(NpgsqlDataSource db, ApiOptions options, TimeProvider clock)
+public sealed partial class WorldStore(NpgsqlDataSource db, ApiOptions options, TimeProvider clock, IWorldHostAllocator hosts)
 {
     private static readonly string[] Visibilities = ["private", "friends", "public"];
 
@@ -220,13 +223,23 @@ public sealed partial class WorldStore(NpgsqlDataSource db, ApiOptions options, 
         return WorldError.None;
     }
 
-    /// <summary>A signed ticket for the player's role in this world (owner, member role, or visitor of a public world).</summary>
-    public async Task<(WorldError, JoinResponse?)> JoinAsync(Guid player, Guid world, CancellationToken ct)
+    /// <summary>
+    /// A signed ticket for the player's role in this world (owner, member role, or visitor of a public world),
+    /// once a server hosts it; otherwise the allocation status without a ticket.
+    /// </summary>
+    public async Task<(WorldError, AllocationResult?, JoinResponse?)> JoinAsync(Guid player, Guid world, CancellationToken ct)
     {
         WorldView? view = await GetAsync(player, world, ct);
         if (view == null)
         {
-            return (WorldError.NotFound, null);
+            return (WorldError.NotFound, null, null);
+        }
+
+        // Access is checked first: strangers must not be able to start servers.
+        AllocationResult host = await hosts.EnsureAsync(world, ct);
+        if (host.Status != AllocationStatus.Ready)
+        {
+            return (WorldError.None, host, null);
         }
 
         WorldAccessRole role = view.Role switch
@@ -238,7 +251,7 @@ public sealed partial class WorldStore(NpgsqlDataSource db, ApiOptions options, 
         long now = clock.GetUtcNow().ToUnixTimeSeconds();
         var ticket = new JoinTicket(Guid.NewGuid(), player, world, role, now, now + options.TicketSeconds);
         byte[] signed = ticket.Sign(options.TicketKeyBytes());
-        return (WorldError.None, new JoinResponse(TokenService.Base64Url(signed), options.GameServerEndpoint, DateTimeOffset.FromUnixTimeSeconds(ticket.ExpiresAt), view.Role));
+        return (WorldError.None, host, new JoinResponse(TokenService.Base64Url(signed), host.Endpoint!, DateTimeOffset.FromUnixTimeSeconds(ticket.ExpiresAt), view.Role));
     }
 
     // Role: owner, the member's role, 'visitor' for public worlds, otherwise 'none' (invisible).

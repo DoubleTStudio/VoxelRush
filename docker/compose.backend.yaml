@@ -1,6 +1,8 @@
 # VR-080 metadata API + PostgreSQL: tools/build-api.sh, export the secrets below, then
 #   docker compose -f docker/compose.backend.yaml up --build
 # Secrets come from your environment only (e.g. openssl rand -base64 32); nothing is committed.
+# ALLOC-001 per-world servers on this host: also tools/build-host-agent.sh, export VOXELRUSH_HOST_AGENT_URL=http://host-agent:8080/,
+# VOXELRUSH_SERVER_IMAGE, VOXELRUSH_PUBLIC_HOST, then add --profile hosting (docs/operations/DEPLOYMENT.md).
 services:
   db:
     image: postgres:17.6-alpine
@@ -22,12 +24,47 @@ services:
       VoxelRush__JwtSigningKey: ${VOXELRUSH_JWT_KEY:?set VOXELRUSH_JWT_KEY}
       VoxelRush__TicketKey: ${VOXELRUSH_TICKET_KEY:?set VOXELRUSH_TICKET_KEY}
       VoxelRush__ServiceToken: ${VOXELRUSH_SERVICE_TOKEN:?set VOXELRUSH_SERVICE_TOKEN}
+      # Used only while VOXELRUSH_HOST_AGENT_URL is empty (one shared server).
       VoxelRush__GameServerEndpoint: 127.0.0.1:7777
+      VoxelRush__HostAgentUrl: ${VOXELRUSH_HOST_AGENT_URL:-}
     read_only: true
     tmpfs: [/tmp]
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     restart: unless-stopped
+  host-agent:
+    profiles: [hosting]
+    build:
+      context: ../build/host-agent
+      dockerfile: ../../docker/host-agent/Dockerfile
+    image: voxelrush-host-agent:dev
+    # No published port: only the API calls it, over the compose network.
+    environment:
+      HostAgent__ServiceToken: ${VOXELRUSH_SERVICE_TOKEN:?set VOXELRUSH_SERVICE_TOKEN}
+      HostAgent__TicketKey: ${VOXELRUSH_TICKET_KEY:?set VOXELRUSH_TICKET_KEY}
+      HostAgent__ApiUrl: http://api:8080
+      HostAgent__ServerImage: ${VOXELRUSH_SERVER_IMAGE:-voxelrush-server:dev}
+      HostAgent__PublicHost: ${VOXELRUSH_PUBLIC_HOST:-127.0.0.1}
+      HostAgent__Network: voxelrush-backend
+      HostAgent__PortRangeStart: ${VOXELRUSH_PORT_RANGE_START:-7800}
+      HostAgent__PortRangeEnd: ${VOXELRUSH_PORT_RANGE_END:-7899}
+      HostAgent__MaxWorlds: ${VOXELRUSH_MAX_WORLDS:-4}
+      HostAgent__IdleShutdownSeconds: ${VOXELRUSH_IDLE_SHUTDOWN_SECONDS:-300}
+    # The Docker socket is root-equivalent on the host. Only this service gets it, because starting world servers is
+    # its whole job; the internet-facing API never does, so an API compromise can't run containers.
+    volumes: ["/var/run/docker.sock:/var/run/docker.sock"]
+    # Group owning the socket on the host (stat -c %g /var/run/docker.sock; 0 on Docker Desktop).
+    group_add: ["${DOCKER_GID:-0}"]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+
+# Fixed name so the host agent can attach world servers to it and they reach the API as http://api:8080.
+networks:
+  default:
+    name: voxelrush-backend
 
 volumes:
   voxelrush-db:
