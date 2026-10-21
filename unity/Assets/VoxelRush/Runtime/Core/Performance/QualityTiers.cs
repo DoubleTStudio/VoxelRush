@@ -13,7 +13,7 @@ namespace VoxelRush.Core.Performance
     /// <summary>What a tier changes (QUALITY_GATES: low tier 30 fps, high tier 60 fps when sustainable). Provisional until device-tested.</summary>
     public readonly struct QualityPreset
     {
-        public QualityPreset(QualityTier tier, float renderScale, float shadowDistance, int targetFrameRate, int streamingRadiusChunks, int debrisPool, int msaa, int chunkCacheChunks)
+        public QualityPreset(QualityTier tier, float renderScale, float shadowDistance, int targetFrameRate, int streamingRadiusChunks, int debrisPool, int msaa, int chunkCacheChunks, int trailParticles)
         {
             Tier = tier;
             RenderScale = renderScale;
@@ -23,6 +23,7 @@ namespace VoxelRush.Core.Performance
             DebrisPool = debrisPool;
             Msaa = msaa;
             ChunkCacheChunks = chunkCacheChunks;
+            TrailParticles = trailParticles;
         }
 
         public QualityTier Tier { get; }
@@ -43,6 +44,9 @@ namespace VoxelRush.Core.Performance
         /// <summary>VOXEL_ENGINE: chunk cache capped by device tier.</summary>
         public int ChunkCacheChunks { get; }
 
+        /// <summary>Spark-trail particles per car (COSM-002); 0 turns trails off.</summary>
+        public int TrailParticles { get; }
+
         public float FrameBudgetMs => 1000f / TargetFrameRate;
     }
 
@@ -50,9 +54,9 @@ namespace VoxelRush.Core.Performance
     {
         public static QualityPreset For(QualityTier tier) => tier switch
         {
-            QualityTier.Low => new QualityPreset(QualityTier.Low, 0.7f, 0f, 30, 2, 64, 1, 256),
-            QualityTier.Medium => new QualityPreset(QualityTier.Medium, 0.85f, 30f, 30, 3, 128, 1, 512),
-            _ => new QualityPreset(QualityTier.High, 1f, 50f, 60, 4, 192, 2, 1024),
+            QualityTier.Low => new QualityPreset(QualityTier.Low, 0.7f, 0f, 30, 2, 64, 1, 256, 0),
+            QualityTier.Medium => new QualityPreset(QualityTier.Medium, 0.85f, 30f, 30, 3, 128, 1, 512, 48),
+            _ => new QualityPreset(QualityTier.High, 1f, 50f, 60, 4, 192, 2, 1024, 96),
         };
     }
 

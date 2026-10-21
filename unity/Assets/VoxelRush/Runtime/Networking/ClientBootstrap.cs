@@ -52,8 +52,8 @@ namespace VoxelRush.Networking
         // SAVE-008: players cache chunks under persistentDataPath; headless bots only when given a directory.
         public const string ChunkCacheArgument = "-chunkCache";
 
-        // COSM-001: headless bots have no garage; the server still checks ownership.
-        public const string PaintArgument = "-botPaint";
+        // COSM-001/002: headless bots have no garage (comma-separated SKUs, one per kind); the server still checks ownership.
+        public const string EquipArgument = "-botEquip";
 
         public bool IsConnected => _network != null && _network.IsConnected;
 
@@ -101,10 +101,21 @@ namespace VoxelRush.Networking
             _cacheRoot = cacheArg >= 0 && cacheArg + 1 < launchArgs.Length ? launchArgs[cacheArg + 1]
                 : Application.isBatchMode ? null : System.IO.Path.Combine(Application.persistentDataPath, "chunk-cache");
             string[] botArgs = Environment.GetCommandLineArgs();
-            int paintArg = Array.IndexOf(botArgs, PaintArgument);
-            if (paintArg >= 0 && paintArg + 1 < botArgs.Length)
+            int equipArg = Array.IndexOf(botArgs, EquipArgument);
+            if (equipArg >= 0 && equipArg + 1 < botArgs.Length)
             {
-                Vehicles.LocalPlayer.EquippedPaint = botArgs[paintArg + 1];
+                foreach (string sku in botArgs[equipArg + 1].Split(','))
+                {
+                    if (Core.Cosmetics.CosmeticCatalog.TryKindOf(sku, out Core.Cosmetics.CosmeticKind kind))
+                    {
+                        Vehicles.LocalPlayer.Equip(kind, sku);
+                    }
+                }
+            }
+
+            if (Array.IndexOf(botArgs, BotHorn.HornArgument) >= 0)
+            {
+                gameObject.AddComponent<BotHorn>();
             }
 
             if (Array.IndexOf(botArgs, BotBuilder.BuildArgument) >= 0 || Array.IndexOf(botArgs, BotBuilder.TowerArgument) >= 0)

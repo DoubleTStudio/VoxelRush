@@ -1286,6 +1286,7 @@ GameObject:
   - component: {fileID: 924816385}
   - component: {fileID: 924816384}
   - component: {fileID: 924816383}
+  - component: {fileID: 924816390}
   m_Layer: 0
   m_Name: TouchHud
   m_TagString: Untagged
@@ -1293,6 +1294,18 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
+--- !u!114 &924816390
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 924816382}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 830898e1b85649b58a88bae9dc4501cd, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: VoxelRush.Presentation::VoxelRush.Presentation.UI.HornButton
 --- !u!114 &924816383
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3056,6 +3069,7 @@ GameObject:
   - component: {fileID: 1700000004}
   - component: {fileID: 1700000005}
   - component: {fileID: 1700000006}
+  - component: {fileID: 1700000007}
   m_Layer: 0
   m_Name: NetworkWorld
   m_TagString: Untagged
@@ -3131,6 +3145,18 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ce5bcb02b63d459db9f3cb472d728e3b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: VoxelRush.Presentation::VoxelRush.Presentation.Store.CarPaintView
+--- !u!114 &1700000007
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1700000001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 17270f23c47d4914b84084fc7f4a1080, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: VoxelRush.Presentation::VoxelRush.Presentation.Store.CarCosmeticsView
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
